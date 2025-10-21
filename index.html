@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>arcLed - カスタムルーレット</title>
+    <style>
+        /* 楽しいルーレット6色でサイコロ代わりに、最高18まで。友達と使う時はルールを決めてから使うといいよ！ */
+        :root {
+            --led-base-width: 8px; /* 元の1倍ベース（JSで上書き） */
+            --led-base-height: 25px;
+            --led-width: 8px; /* 実際に使う幅（JSで更新） */
+            --led-multiplier: 0.5; /* スライダーの倍率（JSで更新） */
+            --led-border-radius: 4px; /* JSで更新（カプセル or 角） */
+            --led-before-width: 10px; /* ::before の幅（JSで更新） */
+        }
+
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: manipulation;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e1e1e, #2a2a2a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            flex-direction: column;
+            color: #fff;
+            text-align: center;
+        }
+
+        img {
+            -webkit-user-drag: none;
+            user-drag: none;
+        }
+
+        .controls-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 250px;
+            background: rgba(0, 0, 0, 0.95);
+            border-radius: 10px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+            flex-direction: column;
+            gap: 12px;
+            font-size: 11px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            display: none;
+        }
+
+        .controls-panel.show { display:flex; }
+
+        .controls-jump-button {
+            background: #00aa66;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 11px;
+            align-self: flex-end;
+            margin-bottom: 5px;
+            text-decoration: none;
+            display: block;
+            width: fit-content;
+        }
+
+        .settings-button {
+            position: absolute;
+            top: calc(50% + 15px);
+            left: calc(50% + -97px);
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            opacity: 0.45;
+        }
+
+        .settings-button:hover { transform: translate(-50%, -50%) scale(1.1); opacity:1; }
+
+        .control-group { display:flex; flex-direction:column; gap:5px; }
+
+        .control-group h4 {
+            margin:0; padding:0; font-size:13px; color:#00aa66; text-align:left;
+            border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px; margin-bottom:5px;
+        }
+
+        .control-group input[type="range"] { width:100%; height:4px; border-radius:2px; background:#333; outline:none; -webkit-appearance:none; }
+        .control-group input[type="range"]::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#00aa66; cursor:pointer; border:2px solid #fff; }
+        .control-group input[type="range"]::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#00aa66; cursor:pointer; border:2px solid #fff; }
+
+        .control-value { color:#00aa66; font-weight:bold; font-size:11px; display:flex; justify-content:space-between; }
+        .control-value .default { color:#888; font-weight:normal; }
+        .mode-switch { display:flex; justify-content:space-around; padding:5px; background:#333; border-radius:20px; }
+        .mode-switch button { background:transparent; border:none; color:#888; font-size:11px; padding:5px 10px; border-radius:15px; cursor:pointer; transition:all 0.2s ease; }
+        .mode-switch button.active { background:#00aa66; color:#fff; font-weight:bold; }
+        .mode-switch label { color:#fff; display:flex; align-items:center; gap:3px; }
+
+        .reset-button { background:#444; color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; transition:background 0.3s ease; font-size:11px; margin-bottom:10px; }
+        .reset-button:hover { background:#555; }
+
+        .device-container {
+            position: absolute;
+            top:50%;
+            left:50%;
+            transition: transform 0.5s ease;
+            width:400px;
+            height:400px;
+            transform-origin:center center;
+        }
+
+        .device {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 50px;
+            background: radial-gradient(circle, #1a1a1a, #000);
+            border-radius: 50%;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.1), 0 10px 30px rgba(0,0,0,0.6);
+            border: 3px solid #333;
+        }
+
+        /* LEDの幅をCSS変数で制御する */
+        .led {
+            position: absolute;
+            width: var(--led-width);
+            height: var(--led-base-height);
+            border-radius: var(--led-border-radius);
+            background: transparent;
+            border: none;
+            transition: all 0.15s ease;
+            transform-origin: center center;
+            opacity: 0;
+        }
+
+        /* ::beforeのぼやけエフェクト（幅を変数で制御） */
+        .led::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: calc((var(--led-width) - var(--led-before-width)) / 2);
+            width: var(--led-before-width);
+            height: calc(var(--led-base-height) + 10px);
+            border-radius: 4px;
+            background: transparent;
+            transition: all 0.3s ease;
+            opacity: 0;
+        }
+
+        .led::after { content:none; }
+
+        .led.active {
+            background: currentColor;
+            border: 1px solid currentColor;
+            opacity: 1;
+            box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
+            transition: all 0.1s ease;
+        }
+
+        .led.active::before {
+            background: currentColor;
+            opacity: 0.18;
+            box-shadow: 0 0 12px currentColor, 0 0 20px currentColor;
+            transition: all 0.1s ease;
+        }
+
+        .led.dim {
+            background: #222;
+            border: 1px solid #333;
+            opacity: 0.15;
+            box-shadow: none;
+            transition: all 0.1s ease;
+        }
+
+        .led.dim::before { background:#222; opacity:0.1; box-shadow:none; }
+
+        .led.red { color:#ff4444; } .led.orange { color:#ff8800; } .led.yellow { color:#ffdd00; }
+        .led.green { color:#44ff44; } .led.blue { color:#4488ff; } .led.purple { color:#aa44ff; }
+
+        .start-button {
+            position: absolute;
+            top:50%;
+            left:50%;
+            transform: translate(-50%,-50%);
+            width:70px;
+            height:70px;
+            border-radius:50%;
+            background: linear-gradient(145deg, #2a2a2a, #111);
+            border:4px solid #444;
+            color:#fff;
+            font-size:10px;
+            font-weight:bold;
+            cursor:pointer;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.7), inset 0 3px 8px rgba(255,255,255,0.15), 0 0 0 2px rgba(0,255,136,0.2);
+            user-select:none;
+            backdrop-filter: blur(5px);
+            line-height: 1.2; /* ボタン内テキスト調整 */
+        }
+
+        .start-button:hover { background: linear-gradient(145deg, #333, #1a1a1a); transform: translate(-50%,-50%) translateX(3px); }
+        .start-button:disabled { cursor: default; }
+
+        .inner-glow {
+            position:absolute;
+            top:50%;
+            left:50%;
+            width:140px;
+            height:140px;
+            transform: translate(-50%,-50%);
+            border-radius:50%;
+            background: radial-gradient(circle, transparent 60%, rgba(0,0,0,0.3) 100%);
+            pointer-events:none;
+            transition: all 0.5s ease;
+        }
+
+        .device.has-active-leds .inner-glow {
+            background: radial-gradient(circle, rgba(68,255,68,0.1) 0%, transparent 70%);
+        }
+
+        #rotation-button {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            background: rgba(255,255,255,0.3);
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+        .led.blinking { animation: blink 0.6s ease-in-out infinite; }
+
+        @media (max-width:768px) { .controls-panel { width:220px; top:10px; left:10px; padding:10px; gap:10px; } }
+
+    </style>
+</head>
+<body>
+    <div class="device-container" style="transform: translate(-50%, -50%) rotate(277.5deg);">
+        <div class="device" id="device">
+            <button class="start-button" id="startButton">●</button>
+        </div>
+        <div class="settings-button" onclick="toggleSettings(event)">⚙️</div>
+    </div>
+
+    <div class="controls-panel" id="controlsPanel">
+        <a href="#panel-bottom" class="controls-jump-button">最下部へ</a>
+        <button class="reset-button" onclick="window.ledSequence.resetToDefault()">設定をリセット</button>
+
+        <div class="control-group">
+            <h4>アイコン設定</h4>
+            <label for="settingsButtonOpacity">歯車アイコンの濃さ</label>
+            <input type="range" id="settingsButtonOpacity" min="0" max="1" step="0.05" value="0.45" data-default-value="0.45">
+            <span class="control-value" id="settingsButtonOpacityValue"><span class="current-value">0.45</span> <span class="default">(デフォルト: 0.45)</span></span>
+        </div>
+
+        <div class="control-group">
+            <h4>LED表示設定</h4>
+            <label for="ledThicknessMultiplier">LEDの太さ（太さの倍率）</label>
+            <input type="range" id="ledThicknessMultiplier" min="0.5" max="4" step="0.1" value="0.5" data-default-value="0.5">
+            <span class="control-value" id="ledThicknessMultiplierValue"><span class="current-value">0.5倍</span> <span class="default">(デフォルト: 0.5倍)</span></span>
+        </div>
+
+        <div class="control-group">
+            <h4>ルーレットの色設定</h4>
+            <div class="mode-switch" id="colorModeSwitch" style="flex-wrap: wrap; gap: 5px;">
+                <button id="colorModeAll" class="active" onclick="window.ledSequence.setColorMode('all')">全色 (デフォルト)</button>
+                <button id="colorModeRandom" onclick="window.ledSequence.setColorMode('random')">ランダム色</button>
+                <button id="colorModeSelect" onclick="window.ledSequence.setColorMode('select')">色を選択</button>
+            </div>
+        </div>
+
+        <div class="control-group" id="colorSelectionGroup" style="display: none; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
+            <label style="font-size:11px;">使用する色 (3の倍数で抽選)</label>
+            <div style="display:flex; justify-content:space-around; gap:5px; flex-wrap:wrap; font-size:10px;">
+                <label><input type="checkbox" id="colorRed" checked onchange="window.ledSequence.updateColorSelection()"> 赤</label>
+                <label><input type="checkbox" id="colorOrange" checked onchange="window.ledSequence.updateColorSelection()"> 橙</label>
+                <label><input type="checkbox" id="colorYellow" checked onchange="window.ledSequence.updateColorSelection()"> 黄</label>
+                <label><input type="checkbox" id="colorGreen" checked onchange="window.ledSequence.updateColorSelection()"> 緑</label>
+                <label><input type="checkbox" id="colorBlue" checked onchange="window.ledSequence.updateColorSelection()"> 青</label>
+                <label><input type="checkbox" id="colorPurple" checked onchange="window.ledSequence.updateColorSelection()"> 紫</label>
+            </div>
+        </div>
+
+        <div class="mode-controls">
+            <h4>アニメーションモード</h4>
+            <div class="mode-switch">
+                <button id="modeShadow" class="active" onclick="window.ledSequence.setAnimationMode('shadow')">走る影</button>
+                <button id="modeLight" onclick="window.ledSequence.setAnimationMode('light')">走る光</button>
+                <button id="modeDemo" onclick="window.ledSequence.setAnimationMode('demo')">デモ (常時回転)</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h4>アニメーション設定</h4>
+            <label for="pressTime">長押しすべき時間 (秒)</label>
+            <input type="range" id="pressTime" min="0.5" max="7" step="0.5" value="6" data-default-value="6">
+            <span class="control-value" id="pressTimeValue"><span class="current-value">6秒</span> <span class="default">(デフォルト: 6秒)</span></span>
+        </div>
+
+        <div class="control-group">
+            <label for="pressRotations">長押し中の回転回数</label>
+            <input type="range" id="pressRotations" min="0" max="10" step="1" value="5" data-default-value="5">
+            <span class="control-value" id="pressRotationsValue"><span class="current-value">5回転</span> <span class="default">(デフォルト: 5回転)</span></span>
+        </div>
+
+        <div class="control-group">
+            <label for="firstSpinDuration">前半のアニメ時間 (秒)</label>
+            <input type="range" id="firstSpinDuration" min="0.5" max="7" step="0.5" value="6" data-default-value="6">
+            <span class="control-value" id="firstSpinDurationValue"><span class="current-value">6秒</span> <span class="default">(デフォルト: 6秒)</span></span>
+        </div>
+
+        <div class="control-group">
+            <label for="firstSpinRotations">前半の回転回数</label>
+            <input type="range" id="firstSpinRotations" min="0" max="10" step="1" value="5" data-default-value="5">
+            <span class="control-value" id="firstSpinRotationsValue"><span class="current-value">5回転</span> <span class="default">(デフォルト: 5回転)</span></span>
+        </div>
+
+        <div class="control-group">
+            <label for="finalSpinDuration">後半のアニメ時間 (秒)</label>
+            <input type="range" id="finalSpinDuration" min="0.5" max="7" step="0.5" value="3" data-default-value="3">
+            <span class="control-value" id="finalSpinDurationValue"><span class="current-value">3秒</span> <span class="default">(デフォルト: 3秒)</span></span>
+        </div>
+
+        <div class="control-group">
+            <label for="finalSpinRotations">後半の追加回転回数</label>
+            <input type="range" id="finalSpinRotations" min="0" max="10" step="1" value="0" data-default-value="0">
+            <span class="control-value" id="finalSpinRotationsValue"><span class="current-value">0回転</span> <span class="default">(デフォルト: 0回転)</span></span>
+        </div>
+
+        <div id="panel-bottom" style="height:1px;"></div>
+    </div>
+
+    <div id="rotation-button" onclick="rotateScreen()"></div>
+
+    <script>
+        class LEDSequence {
+            constructor() {
+                this.colors = ['red','orange','yellow','green','blue','purple'];
+                this.leds = [];
+                this.currentRotatingIndex = 0;
+                this.isRunning = false;
+                this.isPressing = false;
+                this.isFinished = false;
+                this.autoStartTimer = null;
+                this.pressAnimationInterval = null;
+                this.rotationInterval = null;
+                this.finalInterval = null;
+                this.demoInterval = null;
+                this.startButton = document.getElementById('startButton');
+                this.device = document.getElementById('device');
+                this.settingsButton = document.querySelector('.settings-button');
+                this.animationMode = 'shadow'; // デフォルトをshadowに変更
+                this.colorMode = 'all';
+                this.selectedColors = ['red','orange','yellow','green','blue','purple'];
+                this.baseLedWidth = 8;
+                this.root = document.documentElement;
+                this.init();
+                this.setupControls();
+                this.loadSettings();
+                this.updateButtonText(); // ボタンの初期テキスト設定
+            }
+
+            init() {
+                const initialThickness = this.getControlValue('ledThicknessMultiplier', false) || 0.5;
+                this.updateLedThickness(initialThickness);
+                this.createLEDs();
+
+                // ボタンのイベント
+                this.startButton.addEventListener('mousedown', (e)=>this.startPress(e));
+                this.startButton.addEventListener('mouseup', (e)=>this.endPress(e));
+                this.startButton.addEventListener('mouseleave', (e)=>this.endPress(e));
+                this.startButton.addEventListener('touchstart', (e)=>this.startPress(e));
+                this.startButton.addEventListener('touchend', (e)=>this.endPress(e));
+                this.startButton.addEventListener('touchcancel', (e)=>this.endPress(e));
+
+                document.getElementById('settingsButtonOpacity').addEventListener('input', (e)=>{
+                    this.settingsButton.style.opacity = e.target.value;
+                    this.saveSettings();
+                });
+
+                document.getElementById('ledThicknessMultiplier').addEventListener('input', (e)=>{
+                    this.updateLedThickness(e.target.value);
+                    this.saveSettings();
+                });
+            }
+
+            setupControls() {
+                const controls = [
+                    { id: 'settingsButtonOpacity', valueId: 'settingsButtonOpacityValue', suffix: '' },
+                    { id: 'ledThicknessMultiplier', valueId: 'ledThicknessMultiplierValue', suffix: '倍' },
+                    { id: 'pressTime', valueId: 'pressTimeValue', suffix: '秒' },
+                    { id: 'pressRotations', valueId: 'pressRotationsValue', suffix: '回転' },
+                    { id: 'firstSpinDuration', valueId: 'firstSpinDurationValue', suffix: '秒' },
+                    { id: 'firstSpinRotations', valueId: 'firstSpinRotationsValue', suffix: '回転' },
+                    { id: 'finalSpinDuration', valueId: 'finalSpinDurationValue', suffix: '秒' },
+                    { id: 'finalSpinRotations', valueId: 'finalSpinRotationsValue', suffix: '回転' }
+                ];
+
+                controls.forEach(control=>{
+                    const slider = document.getElementById(control.id);
+                    const valueDisplay = document.getElementById(control.valueId);
+                    if(!slider || !valueDisplay) return;
+                    const updateValue = ()=>{
+                        const currentValue = slider.value;
+                        const defaultValue = slider.getAttribute('data-default-value');
+                        valueDisplay.querySelector('.current-value').textContent = currentValue + control.suffix;
+                        valueDisplay.querySelector('.default').textContent = `(デフォルト: ${defaultValue}${control.suffix})`;
+                    };
+                    slider.addEventListener('input', ()=>{
+                        updateValue();
+                        this.saveSettings();
+                    });
+                    updateValue();
+                });
+            }
+
+            updateLedThickness(multiplier) {
+                const multiplierValue = parseFloat(multiplier);
+                let effectiveMultiplier = multiplierValue;
+                if (multiplierValue >= 2.0) {
+                    effectiveMultiplier = 2.0 + (multiplierValue - 2.0) * 0.9;
+                }
+                const newWidth = this.baseLedWidth * effectiveMultiplier;
+
+                this.root.style.setProperty('--led-width', `${newWidth}px`);
+                this.root.style.setProperty('--led-multiplier', `${multiplierValue}`);
+
+                if (multiplierValue <= 2.0) {
+                    const radius = Math.max(newWidth / 2, 4);
+                    this.root.style.setProperty('--led-border-radius', `${radius}px`);
+                } else {
+                    this.root.style.setProperty('--led-border-radius', `4px`);
+                }
+
+                const beforeWidth = multiplierValue <= 2.0 ? 10 : 6;
+                this.root.style.setProperty('--led-before-width', `${beforeWidth}px`);
+
+                this.leds.forEach(led => {
+                    const angle = parseFloat(led.dataset.angle);
+                    const radius = parseFloat(led.dataset.radius);
+                    const centerX = 150;
+                    const radians = (angle * Math.PI) / 180;
+                    const x = centerX + radius * Math.cos(radians) - (newWidth / 2);
+                    led.style.left = x + 'px';
+                    led.style.width = `${newWidth}px`;
+
+                    const br = getComputedStyle(this.root).getPropertyValue('--led-border-radius').trim();
+                    if (br) led.style.borderRadius = br;
+                });
+            }
+
+            saveSettings() {
+                const settings = {
+                    settingsButtonOpacity: this.getControlValue('settingsButtonOpacity', false),
+                    ledThicknessMultiplier: this.getControlValue('ledThicknessMultiplier', false),
+                    animationMode: this.animationMode,
+                    pressTime: this.getControlValue('pressTime', false),
+                    pressRotations: this.getControlValue('pressRotations', false),
+                    firstSpinDuration: this.getControlValue('firstSpinDuration', false),
+                    firstSpinRotations: this.getControlValue('firstSpinRotations', false),
+                    finalSpinDuration: this.getControlValue('finalSpinDuration', false),
+                    finalSpinRotations: this.getControlValue('finalSpinRotations', false),
+                    colorMode: this.colorMode,
+                    selectedColors: this.selectedColors.length > 0 ? this.selectedColors : ['red','orange','yellow','green','blue','purple'],
+                };
+                localStorage.setItem('arcLedSettings', JSON.stringify(settings));
+            }
+
+            loadSettings() {
+                const savedSettings = localStorage.getItem('arcLedSettings');
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+                    for (const key in settings) {
+                        const slider = document.getElementById(key);
+                        if (slider) {
+                            slider.value = settings[key];
+                            if (key === 'settingsButtonOpacity') {
+                                this.settingsButton.style.opacity = settings[key];
+                            } else if (key === 'ledThicknessMultiplier') {
+                                this.updateLedThickness(settings[key]);
+                            }
+                        }
+                    }
+                    if (settings.animationMode) this.setAnimationMode(settings.animationMode);
+                    if (settings.colorMode) {
+                        this.colorMode = settings.colorMode;
+                        this.setColorMode(settings.colorMode);
+
+                        if (settings.colorMode === 'select' && settings.selectedColors) {
+                            this.selectedColors = settings.selectedColors;
+                            ['red', 'orange', 'yellow', 'green', 'blue', 'purple'].forEach(color => {
+                                const checkbox = document.getElementById(`color${color.charAt(0).toUpperCase() + color.slice(1)}`);
+                                if (checkbox) {
+                                    checkbox.checked = this.selectedColors.includes(color);
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    const opacityEl = document.getElementById('settingsButtonOpacity');
+                    if (opacityEl) this.settingsButton.style.opacity = opacityEl.value;
+                    const ledEl = document.getElementById('ledThicknessMultiplier');
+                    if (ledEl) this.updateLedThickness(ledEl.value);
+                    this.setAnimationMode('shadow'); // デフォルトをshadowに設定
+                    this.setColorMode('all');
+                }
+                this.setupControls();
+                this.createLEDs();
+                this.updateButtonText();
+            }
+
+            resetToDefault() {
+                const sliders = document.querySelectorAll('.controls-panel input[type="range"]');
+                sliders.forEach(slider=>{
+                    const defaultValue = slider.getAttribute('data-default-value');
+                    slider.value = defaultValue;
+                });
+                const opacityEl = document.getElementById('settingsButtonOpacity');
+                if (opacityEl) this.settingsButton.style.opacity = opacityEl.value;
+                const ledEl = document.getElementById('ledThicknessMultiplier');
+                if (ledEl) this.updateLedThickness(ledEl.value);
+
+                this.setAnimationMode('shadow'); // デフォルトアニメーションをshadowに
+                this.setColorMode('all');
+
+                ['red', 'orange', 'yellow', 'green', 'blue', 'purple'].forEach(color => {
+                    const checkbox = document.getElementById(`color${color.charAt(0).toUpperCase() + color.slice(1)}`);
+                    if (checkbox) checkbox.checked = true;
+                });
+                const colorSelectionGroup = document.getElementById('colorSelectionGroup');
+                if (colorSelectionGroup) colorSelectionGroup.style.display = 'none';
+
+                this.setupControls();
+                this.createLEDs();
+                this.saveSettings();
+            }
+
+            getControlValue(id, inMilliseconds = true) {
+                const element = document.getElementById(id);
+                if (!element) return id === 'ledThicknessMultiplier' ? 1.0 : 0;
+                const value = parseFloat(element.value);
+                if (inMilliseconds && (id.includes('Time') || id.includes('Duration'))) {
+                    return value * 1000;
+                }
+                return value;
+            }
+
+            setAnimationMode(mode) {
+                this.animationMode = mode;
+                ['Shadow', 'Light', 'Demo'].forEach(m => {
+                    const btn = document.getElementById(`mode${m}`);
+                    if (btn) btn.classList.remove('active');
+                });
+                const targetButton = document.getElementById(`mode${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+                if (targetButton) targetButton.classList.add('active');
+
+                if (mode === 'demo') {
+                    this.reset();
+                    this.startButton.innerHTML = 'START<br>/<br>STOP';
+                } else {
+                    this.stopDemoRotation();
+                    this.reset();
+                }
+                this.saveSettings();
+            }
+
+            setColorMode(mode) {
+                this.colorMode = mode;
+                const colorSelectionGroup = document.getElementById('colorSelectionGroup');
+
+                ['All', 'Random', 'Select'].forEach(m => {
+                    const btn = document.getElementById(`colorMode${m}`);
+                    if (btn) btn.classList.remove('active');
+                });
+                const targetBtn = document.getElementById(`colorMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+                if (targetBtn) targetBtn.classList.add('active');
+
+                if (mode === 'select') {
+                    colorSelectionGroup.style.display = 'flex';
+                    this.updateColorSelection(false);
+                } else {
+                    colorSelectionGroup.style.display = 'none';
+                    this.selectedColors = ['red','orange','yellow','green','blue','purple'];
+                }
+
+                this.createLEDs();
+                this.saveSettings();
+            }
+
+            updateColorSelection(shouldRecreate = true) {
+                this.selectedColors = [];
+                ['red', 'orange', 'yellow', 'green', 'blue', 'purple'].forEach(color => {
+                    const checkbox = document.getElementById(`color${color.charAt(0).toUpperCase() + color.slice(1)}`);
+                    if (checkbox && checkbox.checked) {
+                        this.selectedColors.push(color);
+                    }
+                });
+
+                if (this.selectedColors.length === 0) {
+                    this.selectedColors = ['red','orange','yellow','green','blue','purple'];
+                    this.selectedColors.forEach(color => {
+                        const checkbox = document.getElementById(`color${color.charAt(0).toUpperCase() + color.slice(1)}`);
+                        if (checkbox) checkbox.checked = true;
+                    });
+                }
+
+                if (shouldRecreate) {
+                    this.createLEDs();
+                    this.saveSettings();
+                }
+            }
+
+            createLEDs() {
+                const radius = 115;
+                const centerX = 150;
+                const centerY = 150;
+                const startAngle = 225;
+                const totalAngle = 270;
+                const angleStep = totalAngle / 18;
+
+                this.leds.forEach(led => led.remove());
+                this.leds = [];
+
+                const multiplier = this.getControlValue('ledThicknessMultiplier', false);
+                let currentLedWidth = this.baseLedWidth * multiplier;
+                if (multiplier >= 2.0) {
+                    const effectiveMultiplier = 2.0 + (multiplier - 2.0) * 0.9;
+                    currentLedWidth = this.baseLedWidth * effectiveMultiplier;
+                }
+
+                const borderRadius = multiplier <= 2.0 ? `${Math.max(currentLedWidth / 2, 4)}px` : '4px';
+                this.root.style.setProperty('--led-border-radius', borderRadius);
+
+                const beforeWidth = multiplier <= 2.0 ? 10 : 6;
+                this.root.style.setProperty('--led-before-width', `${beforeWidth}px`);
+                this.root.style.setProperty('--led-width', `${currentLedWidth}px`);
+                this.root.style.setProperty('--led-multiplier', `${multiplier}`);
+
+                const availableColors = this.selectedColors;
+                const colorsToUse = [];
+
+                if (this.colorMode === 'random') {
+                    for (let i = 0; i < 18; i++) {
+                        const randomColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+                        colorsToUse.push(randomColor);
+                    }
+                } else {
+                    for (let i = 0; i < 18; i++) {
+                        const colorIndex = Math.floor(i / 3) % availableColors.length;
+                        colorsToUse.push(availableColors[colorIndex]);
+                    }
+                }
+
+                for (let i = 0; i < 18; i++) {
+                    const angle = startAngle + (i * angleStep);
+                    const color = colorsToUse[i];
+                    const led = document.createElement('div');
+                    led.className = `led ${color}`;
+
+                    led.dataset.angle = angle;
+                    led.dataset.radius = radius;
+
+                    const radians = (angle * Math.PI) / 180;
+                    const x = centerX + radius * Math.cos(radians) - (currentLedWidth / 2);
+                    const y = centerY + radius * Math.sin(radians) - 12;
+
+                    led.style.left = x + 'px';
+                    led.style.top = y + 'px';
+                    led.style.width = `${currentLedWidth}px`;
+                    led.style.transform = `rotate(${angle + 180}deg)`;
+                    led.style.borderRadius = borderRadius;
+
+                    this.device.appendChild(led);
+                    this.leds.push(led);
+                }
+            }
+
+            // デモモードの開始/停止ロジック（ボタンでトグル）
+            startDemoRotation() {
+                if (this.demoInterval) {
+                    this.stopDemoRotation();
+                    return;
+                }
+
+                this.reset();
+                this.isRunning = true;
+                this.startButton.disabled = false;
+                this.device.classList.add('has-active-leds');
+                this.startButton.style.background = 'linear-gradient(145deg, #00aa66, #006644)';
+
+                let currentLightIndex = 0;
+                const stepDuration = 50;
+
+                this.leds.forEach(led => { led.classList.remove('active','dim','blinking'); led.classList.add('dim'); });
+
+                // 光の走るアニメーションを light modeと同じロジックで実行
+                this.demoInterval = setInterval(()=>{
+                    this.leds.forEach(led => { led.classList.remove('active'); led.classList.add('dim'); });
+
+                    // 走る光のアニメーションは6つ光らせる
+                    for (let i=0;i<6;i++){
+                        const lightIndex = (currentLightIndex + i) % 18;
+                        this.leds[lightIndex].classList.remove('dim');
+                        this.leds[lightIndex].classList.add('active');
+                    }
+
+                    currentLightIndex = (currentLightIndex + 1) % 18;
+                }, stepDuration);
+            }
+
+            stopDemoRotation() {
+                if (this.demoInterval) {
+                    clearInterval(this.demoInterval);
+                    this.demoInterval = null;
+                }
+                this.isRunning = false;
+                this.startButton.style.background = '';
+                this.device.classList.remove('has-active-leds');
+                this.leds.forEach(led => { led.classList.remove('active','dim','blinking'); });
+            }
+
+            // ボタンのテキストを更新
+            updateButtonText() {
+                if (this.animationMode === 'demo') {
+                    this.startButton.innerHTML = this.isRunning ? 'STOP' : 'START<br>/<br>STOP';
+                } else {
+                    this.startButton.textContent = '●';
+                }
+            }
+
+            // --- 長押し・スピンロジック（デモモード対応済み） ---
+
+            startPress(e) {
+                e.preventDefault();
+                this.startButton.focus(); // キーボード操作対策
+                
+                if (this.animationMode === 'demo') {
+                    // デモモードの場合、押したら開始/停止をトグル
+                    this.startDemoRotation(); 
+                    this.updateButtonText();
+                    return;
+                }
+                
+                if (this.isRunning || this.isFinished) {
+                    this.reset();
+                    return;
+                }
+                if (this.isPressing) return;
+                this.isPressing = true;
+                this.startButton.style.background = 'linear-gradient(145deg, #00aa66, #006644)';
+                this.lightAllLEDs();
+                this.startPressAnimation();
+                const pressTime = this.getControlValue('pressTime');
+                this.autoStartTimer = setTimeout(()=> {
+                    if (this.isPressing) this.start();
+                }, pressTime);
+            }
+
+            lightAllLEDs() {
+                this.leds.forEach(led => { led.classList.remove('dim','blinking'); led.classList.add('active'); });
+                this.device.classList.add('has-active-leds');
+            }
+
+            startPressAnimation() {
+                let currentDarkIndex = 0;
+                const pressTime = this.getControlValue('pressTime');
+                const rotations = this.getControlValue('pressRotations', false) || 1;
+                const totalSteps = Math.max(rotations * 18, 1);
+                const stepTime = pressTime / totalSteps;
+
+                if (this.animationMode === 'shadow') {
+                    this.pressAnimationInterval = setInterval(()=>{
+                        this.leds.forEach(led => { led.classList.remove('dim'); led.classList.add('active'); });
+                        this.leds[currentDarkIndex].classList.remove('active'); this.leds[currentDarkIndex].classList.add('dim');
+                        currentDarkIndex = (currentDarkIndex + 1) % 18;
+                    }, stepTime);
+                } else {
+                    this.pressAnimationInterval = setInterval(()=>{
+                        this.leds.forEach(led => { led.classList.remove('active'); led.classList.add('dim'); });
+                        // 走る光は6つに
+                        for (let i=0;i<6;i++){
+                            const idx = (currentDarkIndex + i) % 18;
+                            this.leds[idx].classList.remove('dim'); this.leds[idx].classList.add('active');
+                        }
+                        currentDarkIndex = (currentDarkIndex + 1) % 18;
+                    }, stepTime);
+                }
+            }
+
+            endPress(e) {
+                e.preventDefault();
+                // デモモードではボタンを離しても何もしない（startPressでトグル済み）
+                if (this.animationMode === 'demo') return; 
+                
+                if (!this.isPressing) return;
+                if (!this.isRunning) {
+                    this.reset();
+                } else {
+                    this.isPressing = false;
+                    this.startButton.style.background = '';
+                }
+            }
+
+            start() {
+                if (this.isRunning) return;
+                this.isRunning = true;
+                this.isPressing = false;
+                this.startButton.disabled = true;
+                this.startButton.style.background = '';
+                if (this.pressAnimationInterval) { clearInterval(this.pressAnimationInterval); this.pressAnimationInterval = null; }
+                if (this.autoStartTimer) { clearTimeout(this.autoStartTimer); this.autoStartTimer = null; }
+                this.startSpinSequence();
+            }
+
+            startSpinSequence() {
+                this.currentRotatingIndex = 0;
+                const totalRotations = this.getControlValue('firstSpinRotations', false);
+                const rotationDuration = this.getControlValue('firstSpinDuration');
+                const totalSteps = Math.max(totalRotations * 18, 1);
+                const stepDuration = rotationDuration / totalSteps;
+                let stepCount = 0;
+
+                if (this.animationMode === 'shadow') {
+                    this.leds.forEach(led => { led.classList.remove('dim'); led.classList.add('active'); });
+                    this.rotationInterval = setInterval(()=>{
+                        const prevIndex = (this.currentRotatingIndex - 1 + 18) % 18;
+                        this.leds[prevIndex].classList.remove('dim'); this.leds[prevIndex].classList.add('active');
+                        this.leds[this.currentRotatingIndex].classList.remove('active'); this.leds[this.currentRotatingIndex].classList.add('dim');
+                        this.currentRotatingIndex = (this.currentRotatingIndex + 1) % 18;
+                        stepCount++;
+                        if (stepCount >= totalSteps) { clearInterval(this.rotationInterval); this.rotationInterval = null; this.finalSpin(); }
+                    }, stepDuration);
+                } else {
+                    this.leds.forEach(led => { led.classList.remove('active'); led.classList.add('dim'); });
+                    this.rotationInterval = setInterval(()=>{
+                        this.leds.forEach(led => { led.classList.remove('active'); led.classList.add('dim'); });
+                        // 走る光は6つに
+                        for (let i=0;i<6;i++){
+                            const lightIndex = (this.currentRotatingIndex + i) % 18;
+                            this.leds[lightIndex].classList.remove('dim'); this.leds[lightIndex].classList.add('active');
+                        }
+                        this.currentRotatingIndex = (this.currentRotatingIndex + 1) % 18;
+                        stepCount++;
+                        if (stepCount >= totalSteps) { clearInterval(this.rotationInterval); this.rotationInterval = null; this.finalSpin(); }
+                    }, stepDuration);
+                }
+            }
+
+            finalSpin() {
+                const randomTarget = Math.floor(Math.random()*18);
+                let currentIndex = this.currentRotatingIndex;
+                let stepCount = 0;
+                const additionalRotations = this.getControlValue('finalSpinRotations', false);
+                const finalSpinSteps = (18 - currentIndex + randomTarget) % 18 + (additionalRotations * 18);
+                const duration = this.getControlValue('finalSpinDuration');
+                const stepInterval = finalSpinSteps > 0 ? duration / finalSpinSteps : 0;
+
+                this.leds.forEach(led => { led.classList.remove('dim'); led.classList.add('active'); });
+
+                if (stepInterval === 0) { this.showFinalResult(randomTarget); return; }
+
+                this.finalInterval = setInterval(()=>{
+                    const prevIndex = (currentIndex - 1 + 18) % 18;
+                    this.leds[prevIndex].classList.remove('dim'); this.leds[prevIndex].classList.add('active');
+                    this.leds[currentIndex].classList.remove('active'); this.leds[currentIndex].classList.add('dim');
+                    stepCount++;
+                    if (stepCount >= finalSpinSteps) {
+                        clearInterval(this.finalInterval); this.finalInterval = null;
+                        this.leds[currentIndex].classList.remove('dim'); this.leds[currentIndex].classList.add('active');
+                        this.showFinalResult(currentIndex);
+                    } else {
+                        currentIndex = (currentIndex + 1) % 18;
+                    }
+                }, stepInterval);
+            }
+
+            showFinalResult(selectedIndex) {
+                this.leds.forEach(led => { led.classList.remove('dim'); led.classList.add('active'); });
+                this.leds[selectedIndex].classList.add('blinking');
+                this.isRunning = false;
+                this.isFinished = true;
+                this.startButton.disabled = false;
+                this.updateButtonText();
+            }
+
+            reset() {
+                this.isPressing = false;
+                this.isRunning = false;
+                this.isFinished = false;
+                this.startButton.disabled = false;
+                this.startButton.style.background = '';
+                this.device.classList.remove('has-active-leds');
+
+                if (this.pressAnimationInterval) { clearInterval(this.pressAnimationInterval); this.pressAnimationInterval = null; }
+                if (this.autoStartTimer) { clearTimeout(this.autoStartTimer); this.autoStartTimer = null; }
+                if (this.rotationInterval) { clearInterval(this.rotationInterval); this.rotationInterval = null; }
+                if (this.finalInterval) { clearInterval(this.finalInterval); this.finalInterval = null; }
+                if (this.demoInterval) { clearInterval(this.demoInterval); this.demoInterval = null; }
+
+                this.leds.forEach(led => {
+                    led.classList.remove('active','dim','blinking');
+                    led.style.opacity = '1';
+                });
+                this.updateButtonText(); // デモモードの表示を更新
+            }
+        }
+
+        let deviceRotation = 277.5;
+
+        function toggleSettings(event) {
+            event.stopPropagation();
+            const panel = document.getElementById('controlsPanel');
+            panel.classList.toggle('show');
+        }
+
+        document.addEventListener('click', (event) => {
+            const panel = document.getElementById('controlsPanel');
+            const settingsButton = document.querySelector('.settings-button');
+            const isClickInsidePanel = panel.contains(event.target);
+            const isClickOnButton = settingsButton.contains(event.target);
+            if (panel.classList.contains('show') && !isClickInsidePanel && !isClickOnButton) panel.classList.remove('show');
+        });
+
+        document.addEventListener('touchstart', (event) => {
+            const panel = document.getElementById('controlsPanel');
+            const settingsButton = document.querySelector('.settings-button');
+            const isTouchInsidePanel = panel.contains(event.target);
+            const isTouchOnButton = settingsButton.contains(event.target);
+            if (panel.classList.contains('show') && !isTouchInsidePanel && !isTouchOnButton) panel.classList.remove('show');
+        });
+
+        function rotateScreen() {
+            deviceRotation += 45;
+            const deviceContainer = document.querySelector('.device-container');
+            deviceContainer.style.transform = `translate(-50%, -50%) rotate(${deviceRotation}deg)`;
+            const rotationButton = document.getElementById('rotation-button');
+            rotationButton.style.background = 'rgba(255,255,255,0.8)';
+            rotationButton.style.borderColor = 'rgba(255,255,255,0.9)';
+            rotationButton.style.transform = 'scale(1.3)';
+            setTimeout(()=> {
+                rotationButton.style.background = 'rgba(255,255,255,0.3)';
+                rotationButton.style.borderColor = 'rgba(255,255,255,0.4)';
+                rotationButton.style.transform = 'scale(1)';
+            }, 200);
+        }
+
+        document.addEventListener('keydown', function(event) {
+            switch(event.key.toLowerCase()) {
+                case ' ':
+                    event.preventDefault();
+                    if (window.ledSequence && window.ledSequence.animationMode === 'demo') {
+                        window.ledSequence.startDemoRotation(); // スペースキーでデモ開始/停止
+                    } else {
+                        rotateScreen();
+                    }
+                    break;
+                case 'escape':
+                    if (window.ledSequence) window.ledSequence.reset();
+                    break;
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            window.ledSequence = new LEDSequence();
+        });
+    </script>
+</body>
+</html>
