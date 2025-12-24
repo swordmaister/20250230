@@ -184,6 +184,28 @@ export class Game {
         this.mode.update(dt, t);
         this.player.update(dt);
 
+        // Target Arrow Update
+        const target = this.entities.enemies.find(e => e.isTarget || e.isBoss);
+        if(target && this.targetArrow) {
+            this.targetArrow.visible = true;
+            const _vecPos = new THREE.Vector3(); const _vecDir = new THREE.Vector3(); const _vecUp = new THREE.Vector3(0,1,0); const _vecRight = new THREE.Vector3();
+            this.camera.getWorldPosition(_vecPos); this.camera.getWorldDirection(_vecDir);
+            _vecRight.crossVectors(_vecDir, _vecUp).normalize();
+            this.targetArrow.scale.set(0.6, 0.6, 0.6);
+            this.targetArrow.position.copy(_vecPos).add(_vecDir.multiplyScalar(1.5)).add(_vecRight.multiplyScalar(0.4));
+            this.targetArrow.lookAt(target.body.position.x, target.body.position.y, target.body.position.z);
+            this.targetArrow.rotateX(Math.PI/2);
+            target.time = (target.time||0) + dt;
+            if(target.mesh.material && target.mesh.material.emissiveIntensity !== undefined)
+                target.mesh.material.emissiveIntensity = 0.5 + Math.sin(target.time*5) * 0.5;
+            if(target.mesh.children[0]) {
+                target.mesh.children[0].position.y = 2 + Math.sin(target.time*3)*0.5;
+                target.mesh.children[0].rotation.z += dt*2;
+            }
+        } else if(this.targetArrow) {
+            this.targetArrow.visible = false;
+        }
+
         // Update entities
         this.entities.enemies.forEach(e => {
             if(e.update) e.update(dt, t);
