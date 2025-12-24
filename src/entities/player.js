@@ -55,6 +55,11 @@ export class Player {
         // Physics Sync
         this.game.playerGroup.position.copy(this.body.position).add(new THREE.Vector3(0, this.config.height, 0));
 
+        // Skating Mechanic (Speed Boost on Barriers)
+        this.raycaster.set(this.body.position, new THREE.Vector3(0,-1,0));
+        const hits = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k=>k.mesh));
+        this.speedMult = (hits.length > 0 && hits[0].distance < 1.5) ? 1.8 : 1.0;
+
         if (this.game.renderer.xr.isPresenting) {
             this.handleVRInput(dt);
         } else {
@@ -94,8 +99,8 @@ export class Player {
 
     handleMobileInput(dt) {
         const fwd = new THREE.Vector3(this.input.x, 0, this.input.y).applyAxisAngle(new THREE.Vector3(0,1,0), this.camAngle.yaw);
-        this.body.velocity.x = fwd.x * this.config.speed;
-        this.body.velocity.z = fwd.z * this.config.speed;
+        this.body.velocity.x = fwd.x * this.config.speed * (this.speedMult || 1.0);
+        this.body.velocity.z = fwd.z * this.config.speed * (this.speedMult || 1.0);
 
         this.game.playerGroup.rotation.y = this.camAngle.yaw;
         this.game.camera.rotation.x = this.camAngle.pitch;
@@ -122,8 +127,8 @@ export class Player {
                 const stickX = gp.axes[2]; const stickY = gp.axes[3];
                 if(Math.abs(stickX) > 0.1 || Math.abs(stickY) > 0.1) {
                     const v = _vecDir.clone().multiplyScalar(-stickY).add(_vecRight.clone().multiplyScalar(-stickX));
-                    this.body.velocity.x = v.x * this.config.speed;
-                    this.body.velocity.z = v.z * this.config.speed;
+                    this.body.velocity.x = v.x * this.config.speed * (this.speedMult || 1.0);
+                    this.body.velocity.z = v.z * this.config.speed * (this.speedMult || 1.0);
                 } else {
                     this.body.velocity.x = 0; this.body.velocity.z = 0;
                 }
@@ -309,8 +314,9 @@ export class Player {
             }
         }, {passive:false});
 
-        this.game.renderer.domElement.addEventListener('touchmove', e => {
-            e.preventDefault(); if(!lookId) return;
+        window.addEventListener('touchmove', e => {
+            if(!lookId) return;
+            // e.preventDefault(); // Don't prevent default on window globally, it might break other things
             for(let i=0; i<e.changedTouches.length; i++) {
                 if(e.changedTouches[i].identifier === lookId) {
                     const t = e.changedTouches[i];
@@ -322,9 +328,11 @@ export class Player {
             }
         }, {passive:false});
 
-        this.game.renderer.domElement.addEventListener('touchend', e => {
+        const endLook = (e) => {
             for(let i=0; i<e.changedTouches.length; i++) if(e.changedTouches[i].identifier===lookId) lookId=null;
-        });
+        };
+        window.addEventListener('touchend', endLook);
+        window.addEventListener('touchcancel', endLook);
 
         // Buttons
         document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
@@ -608,7 +616,43 @@ export class Player {
             positions[3] = this.game.aimMarker.position.x; positions[4] = this.game.aimMarker.position.y; positions[5] = this.game.aimMarker.position.z;
             this.game.focusLaser.geometry.attributes.position.needsUpdate = true;
 
-            this.game.currentTargetKekkai = null;
+            // Check for Kekkai even in Smart Aim mode to allow Metsu
+            let bestCandidate = null;
+            this.raycaster.set(_vecPos, _vecDir);
+            const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
+            if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
+
+            if(!bestCandidate) {
+                let minD = 999;
+                this.game.entities.kekkai.forEach(k => {
+                    const kPos = k.mesh.position;
+                    const vecToK = kPos.clone().sub(_vecPos);
+                    const t = vecToK.dot(_vecDir);
+                    if (t > 0 && t < this.game.mode.config.dist.max + 20) {
+                        const closestPoint = _vecPos.clone().add(_vecDir.clone().multiplyScalar(t));
+                        const dist = kPos.distanceTo(closestPoint);
+                        const size = Math.max(k.mesh.scale.x, k.mesh.scale.y, k.mesh.scale.z);
+                        if (dist < this.game.mode.config.aimAssist.baseRadius + (size * 0.5)) {
+                            if(dist < minD){ minD = dist; bestCandidate = k; }
+                        }
+                    }
+                });
+            }
+
+            // Highlight logic
+            if (this.game.currentTargetKekkai && this.game.currentTargetKekkai !== bestCandidate) {
+                if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
+                    this.game.currentTargetKekkai.edges.material.color.setHex(0xffffff);
+                    this.game.currentTargetKekkai.edges.material.linewidth = 1;
+                }
+            }
+            this.game.currentTargetKekkai = bestCandidate;
+            if (this.game.currentTargetKekkai) {
+                if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
+                    this.game.currentTargetKekkai.edges.material.color.setHex(this.game.mode.config.colors.highlight);
+                    this.game.currentTargetKekkai.edges.material.linewidth = 3;
+                }
+            }
 
         } else {
             // Standard Aim Logic

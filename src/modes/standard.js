@@ -330,7 +330,7 @@ export class StandardMode extends BaseMode {
         for(let i=-FW/2+5;i<FW/2;i+=10)for(let j=5;j<28;j+=7){const w=new THREE.Mesh(new THREE.PlaneGeometry(4,4),new THREE.MeshBasicMaterial({color:0x87CEFA})); w.position.set(i,j,bZ+20+0.1); scene.add(w);}
         createBox(0, bH+1, bZ, FW, 2, 40, CFG.colors.concrete);
 
-        // Ramps and details (Simplified from original for brevity, but retaining functional blocks)
+        // Ramps and details
         const rampH = 0.6, rampW = 1.2;
         const createRampFence = (x, z, length, rotY) => {
             const shape = new THREE.Shape(); shape.moveTo(0,0); shape.lineTo(0, rampH); shape.lineTo(rampW, 0); shape.lineTo(0,0);
@@ -343,9 +343,45 @@ export class StandardMode extends BaseMode {
             b.addShape(new CANNON.Box(new CANNON.Vec3(0.1, rampH/2, length/2)), new CANNON.Vec3(0, rampH/2, 0));
             b.position.set(x, bH+1, z); b.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0), rotY); world.addBody(b);
         };
-        createRampFence(0, bZ-20, FW, -Math.PI/2);
+        createRampFence(0, bZ-20, FW, -Math.PI/2); createRampFence(-FW/2, bZ, 40, 0); createRampFence(FW/2, bZ, 40, Math.PI);
+        const landW=8; const gapW = landW + 2; const landX = FW/2 - landW/2 - 2; const gapStart = landX - gapW/2; const gapEnd = landX + gapW/2;
+        createRampFence((-FW/2 + gapStart)/2, bZ+20, gapStart - (-FW/2), Math.PI/2); createRampFence((gapEnd + FW/2)/2, bZ+20, FW/2 - gapEnd, Math.PI/2);
+
+        const wtX = FW/2 - 8, wtZ = bZ - 8, wtBaseH = bH+2; const wtTank = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 6, 16), new THREE.MeshStandardMaterial({color: CFG.colors.concrete})); wtTank.position.set(wtX, wtBaseH + 8, wtZ); wtTank.castShadow=true; scene.add(wtTank); const wtTankBody = new CANNON.Body({mass:0, material:mat}); wtTankBody.addShape(new CANNON.Cylinder(4,4,6,16)); wtTankBody.position.copy(wtTank.position); world.addBody(wtTankBody);
+        for(let i=0; i<4; i++){ const ang = i * Math.PI/2; const m=new THREE.Mesh(new THREE.BoxGeometry(0.5,5,0.5), new THREE.MeshStandardMaterial({color:CFG.colors.iron})); m.position.set(wtX + Math.cos(ang)*3, wtBaseH + 2.5, wtZ + Math.sin(ang)*3); scene.add(m); }
+
+        const stW=6, stRise=bH, stRun=60; const landD=stW+2; const landY = bH; const landZ = bZ + 20 + landD/2;
+        createBox(landX, landY, landZ, landW, 1, landD, CFG.colors.concrete);
+        const slLen=Math.sqrt(stRun**2+stRise**2), slAng=Math.atan2(stRise, stRun); const slMidX = landX - landW/2 - stRun/2; const slMidY = stRise/2; const slZ = bZ + 20 + stW/2 + 0.05;
+        const slB=new CANNON.Body({mass:0,material:mat}); slB.addShape(new CANNON.Box(new CANNON.Vec3(slLen/2,0.5,stW/2))); slB.position.set(slMidX, slMidY, slZ); const slQ = new THREE.Quaternion(); slQ.setFromEuler(new THREE.Euler(0,0,slAng)); slB.quaternion.copy(slQ); world.addBody(slB);
+        const slM=new THREE.Mesh(new THREE.BoxGeometry(slLen,1,stW), new THREE.MeshStandardMaterial({color:CFG.colors.concrete})); slM.position.copy(slB.position); slM.quaternion.copy(slB.quaternion); scene.add(slM);
+
+        const brRun=3.0, brRise=1.5; const brLen=Math.sqrt(brRun**2+brRise**2)+0.5; const brAng=Math.atan2(brRise, brRun);
+        const brB = new CANNON.Body({mass:0, material:mat}); brB.addShape(new CANNON.Box(new CANNON.Vec3(landW/2, 0.2, brLen/2))); brB.position.set(landX, bH + 0.5 + brRise/2, bZ + 21.5); brB.quaternion.setFromEuler(brAng, 0, 0); world.addBody(brB);
+        const brM = new THREE.Mesh(new THREE.BoxGeometry(landW, 0.4, brLen), new THREE.MeshStandardMaterial({color:CFG.colors.concrete})); brM.position.copy(brB.position); brM.quaternion.copy(brB.quaternion); scene.add(brM);
+
+        const hrH=1.2, hrT=0.1; const cRail = (x,y,z,w,h,d,rx=0,ry=0,rz=0) => { const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshStandardMaterial({color:CFG.colors.iron})); m.position.set(x,y,z); m.rotation.set(rx,ry,rz); scene.add(m); const b=new CANNON.Body({mass:0,material:mat}); b.addShape(new CANNON.Box(new CANNON.Vec3(w/2,h/2,d/2))); b.position.copy(m.position); b.quaternion.copy(m.quaternion); world.addBody(b); };
+        cRail(slMidX, slMidY+hrH/2, slZ-stW/2+hrT/2+0.05, slLen, hrH, hrT, 0,0,slAng); cRail(slMidX, slMidY+hrH/2, slZ+stW/2-hrT/2-0.05, slLen, hrH, hrT, 0,0,slAng);
+        cRail(landX, landY+hrH/2, landZ+landD/2-hrT/2, landW, hrH, hrT); cRail(landX+landW/2-hrT/2, landY+hrH/2, landZ, hrT, hrH, landD);
+        cRail(landX-landW/2+hrT/2, bH+0.5+brRise/2+hrH/2, bZ+21.5, hrT, hrH, brLen, brAng,0,0); cRail(landX+landW/2-hrT/2, bH+0.5+brRise/2+hrH/2, bZ+21.5, hrT, hrH, brLen, brAng,0,0);
+
+        const pX = 35, pZ = 10, pW = 20, pD = 40, pBaseH = 4;
+        createBox(pX, pBaseH/2, pZ, pW+4, pBaseH, pD+4, CFG.colors.concrete);
+        createBox(pX, pBaseH+1, pZ - pD/2 - 1, pW+2, 2, 2, CFG.colors.concrete); createBox(pX, pBaseH+1, pZ + pD/2 + 1, pW+2, 2, 2, CFG.colors.concrete); createBox(pX - pW/2 - 1, pBaseH+1, pZ, 2, 2, pD, CFG.colors.concrete); createBox(pX + pW/2 + 1, pBaseH+1, pZ, 2, 2, pD, CFG.colors.concrete);
+        const water = new THREE.Mesh(new THREE.PlaneGeometry(pW, pD), new THREE.MeshBasicMaterial({color:0x00aaff, transparent:true, opacity:0.6, side:THREE.DoubleSide})); water.rotation.x = -Math.PI/2; water.position.set(pX, pBaseH+1.5, pZ); scene.add(water);
+        const prRun=25, prRise=pBaseH, prW=4; const prLen=Math.sqrt(prRun**2+prRise**2), prAng=Math.atan2(prRise, prRun);
+        const prMidY = prRise/2; const prMidZ = pZ;
+        const prMidX_L = pX - pW/2 - prW/2 - 2; const prB_L=new CANNON.Body({mass:0,material:mat}); prB_L.addShape(new CANNON.Box(new CANNON.Vec3(prW/2, 0.5, prLen/2))); prB_L.position.set(prMidX_L, prMidY, prMidZ); const prQ_L = new THREE.Quaternion(); prQ_L.setFromEuler(new THREE.Euler(prAng, 0, 0)); prB_L.quaternion.copy(prQ_L); world.addBody(prB_L); const prM_L=new THREE.Mesh(new THREE.BoxGeometry(prW, 1, prLen), new THREE.MeshStandardMaterial({color:CFG.colors.concrete})); prM_L.position.copy(prB_L.position); prM_L.quaternion.copy(prB_L.quaternion); scene.add(prM_L);
+        const prMidX_R = pX + pW/2 + prW/2 + 2; const prB_R=new CANNON.Body({mass:0,material:mat}); prB_R.addShape(new CANNON.Box(new CANNON.Vec3(prW/2, 0.5, prLen/2))); prB_R.position.set(prMidX_R, prMidY, prMidZ); const prQ_R = new THREE.Quaternion(); prQ_R.setFromEuler(new THREE.Euler(prAng, 0, 0)); prB_R.quaternion.copy(prQ_R); world.addBody(prB_R); const prM_R=new THREE.Mesh(new THREE.BoxGeometry(prW, 1, prLen), new THREE.MeshStandardMaterial({color:CFG.colors.concrete})); prM_R.position.copy(prB_R.position); prM_R.quaternion.copy(prB_R.quaternion); scene.add(prM_R);
 
         // Gate
         const gZ = FD/2; createBox(-gateW/2-1, 4, gZ, 2, 8, 2, CFG.colors.wall); createBox(gateW/2+1, 4, gZ, 2, 8, 2, CFG.colors.wall);
+        for(let i=-gateW/2; i<=gateW/2; i+=1.0) createVisualBox(i, 3, gZ, 0.2, 6, 0.2, CFG.colors.iron);
+        createVisualBox(0, 5.5, gZ, gateW, 0.3, 0.3, CFG.colors.iron); createVisualBox(0, 0.5, gZ, gateW, 0.3, 0.3, CFG.colors.iron);
+        const gateB = new CANNON.Body({mass:0, material:mat}); gateB.addShape(new CANNON.Box(new CANNON.Vec3(gateW/2, 3, 0.1))); gateB.position.set(0, 3, gZ); world.addBody(gateB);
+        const createTree = (x, z) => { const trunkH = 4 + Math.random()*2; createBox(x, trunkH/2, z, 1, trunkH, 1, CFG.colors.wood); const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(2.5 + Math.random(), 1), new THREE.MeshStandardMaterial({color:CFG.colors.leaf, roughness:0.8})); leaves.position.set(x, trunkH+2, z); leaves.castShadow=true; scene.add(leaves); };
+        for(let i=0; i<5; i++) createTree(-FW/2+3, -FD/2 + 10 + i*20); for(let i=0; i<5; i++) createTree(FW/2-3, -FD/2 + 10 + i*20);
+
+        function createVisualBox(x,y,z,w,h,d,col,rotY=0){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:col})); m.position.set(x,y,z); m.rotation.y=rotY; m.castShadow=true; m.receiveShadow=true; scene.add(m); return m; }
     }
 }
