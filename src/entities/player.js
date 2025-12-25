@@ -336,7 +336,6 @@ export class Player {
 
         // Buttons
         document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
-        document.getElementById('btnZekkai').addEventListener('touchstart', e => { e.preventDefault(); this.toggleZekkai(); });
 
         // Distance / Focus
         let distTouchStart = {x:0,y:0}; let distBtnTimer=null; let distBtnLongPress=false;
@@ -349,7 +348,7 @@ export class Player {
                 this.isFocusing = !this.isFocusing;
                 this.game.showMsg(this.isFocusing ? "集中モード ON" : "集中モード OFF", "#f00");
                 distBtnLongPress = true;
-            }, 1000);
+            }, 500);
         });
         btnUp.addEventListener('touchend', e => {
             e.preventDefault();
@@ -382,16 +381,42 @@ export class Player {
             }
         });
 
-        // Mode Switch
+        // Mode Switch (and Zekkai via slide)
         const modeBtn = document.getElementById('modeSwitch');
+        let modeTouchStart = {x:0, y:0};
+        let modeIsSlide = false;
+
         modeBtn.addEventListener('touchstart', e => {
             e.preventDefault(); e.stopPropagation();
-            this.isPhysMode = !this.isPhysMode;
-            modeBtn.textContent = this.isPhysMode ? "モード: 顕現" : "モード: 幽体";
-            modeBtn.className = this.isPhysMode ? "phys" : "ghost";
-            const btnRight = document.getElementById('btnRight');
-            btnRight.style.background = this.isPhysMode ? "linear-gradient(135deg,#FFD700,#FF8C00)" : "linear-gradient(135deg,#03a9f4,#0288d1)";
-            btnRight.innerHTML = this.isPhysMode ? "顕<br><span style='font-size:10px'>Hold</span>" : "結<br><span style='font-size:10px'>Hold</span>";
+            const t = e.changedTouches[0];
+            modeTouchStart = {x:t.clientX, y:t.clientY};
+            modeIsSlide = false;
+        });
+
+        modeBtn.addEventListener('touchmove', e => {
+             e.preventDefault(); e.stopPropagation();
+             const t = e.changedTouches[0];
+             const dx = t.clientX - modeTouchStart.x;
+             if (Math.abs(dx) > 30 && !modeIsSlide && this.game.mode.isAwakened) { // Slide threshold
+                 modeIsSlide = true;
+                 this.toggleZekkai();
+             }
+        });
+
+        modeBtn.addEventListener('touchend', e => {
+            e.preventDefault(); e.stopPropagation();
+            if (!modeIsSlide) {
+                // Normal Click Behavior
+                this.isPhysMode = !this.isPhysMode;
+                modeBtn.textContent = this.isPhysMode ? "モード: 顕現" : "モード: 幽体";
+                modeBtn.className = this.isPhysMode ? "phys" : "ghost";
+                const btnRight = document.getElementById('btnRight');
+                btnRight.style.background = this.isPhysMode ? "linear-gradient(135deg,#FFD700,#FF8C00)" : "linear-gradient(135deg,#03a9f4,#0288d1)";
+                btnRight.innerHTML = this.isPhysMode ? "顕<br><span style='font-size:10px'>Hold</span>" : "結<br><span style='font-size:10px'>Hold</span>";
+
+                // If Zekkai was active, maybe visual update? (Zekkai stays on independent of Phys/Ghost mode)
+                if(this.zekkaiActive) this.updateZekkaiUI();
+            }
         });
 
         // Draw (Right)
@@ -532,6 +557,27 @@ export class Player {
             if (this.zekkaiMesh) { this.game.safeRemoveMesh(this.zekkaiMesh); this.zekkaiMesh = null; }
             if (this.zekkaiBody) { this.game.world.removeBody(this.zekkaiBody); this.zekkaiBody = null; }
         }
+        this.updateZekkaiUI();
+    }
+
+    updateZekkaiUI() {
+        const modeBtn = document.getElementById('modeSwitch');
+        if (this.zekkaiActive) {
+            modeBtn.style.background = "linear-gradient(90deg, #aa00ff, #550088)";
+            modeBtn.style.borderColor = "#ff00ff";
+            modeBtn.style.color = "#fff";
+            modeBtn.textContent = "絶界 展開中";
+        } else {
+            // Revert to current phys/ghost state
+            modeBtn.className = this.isPhysMode ? "phys" : "ghost"; // This resets styles defined in CSS class?
+            // We need to clear inline styles or re-apply.
+            // Better to just clear inline styles and let class handle it,
+            // but we need to ensure text is correct.
+            modeBtn.style.background = "";
+            modeBtn.style.borderColor = "";
+            modeBtn.style.color = "";
+            modeBtn.textContent = this.isPhysMode ? "モード: 顕現" : "モード: 幽体";
+        }
     }
 
     updateHUD() {
@@ -573,33 +619,34 @@ export class Player {
         this.game.camera.getWorldPosition(_vecPos);
         this.game.camera.getWorldDirection(_vecDir);
 
-        if (this.isFocusing || (this.game.mode.isAwakened && this.game.mode.smartAimActive)) {
+        if (this.isFocusing) { // Smart Aim is now tied to Focus Mode
             // Smart Aim / Focus Logic
             this.game.focusLaser.visible = true;
             this.game.aimMarker.material.color.setHex(0xff0000);
 
-            // Awakened Mode Smart Aim auto-targets enemies
             let targetPoint = null;
-            if (this.game.mode.smartAimActive) {
+            let lockedEnemy = null;
+
+            // Awakened Mode Smart Aim Logic
+            if (this.game.mode.isAwakened) {
                 // Find closest enemy to center of screen within range
-                let closest = null;
                 let maxDot = 0.9; // Cone of vision
                 this.game.entities.enemies.forEach(e => {
                     const dirToE = e.mesh.position.clone().sub(_vecPos).normalize();
                     const dot = _vecDir.dot(dirToE);
                     if (dot > maxDot) {
                         maxDot = dot;
-                        closest = e;
+                        lockedEnemy = e;
                     }
                 });
-                if (closest) {
-                    targetPoint = closest.mesh.position.clone();
+                if (lockedEnemy) {
+                    targetPoint = lockedEnemy.mesh.position.clone();
                     this.game.aimMarker.position.copy(targetPoint);
                 }
             }
 
             if (!targetPoint) {
-                // Standard Raycast
+                // Standard Raycast fallback
                 this.raycaster.set(_vecPos, _vecDir);
                 const targets = this.game.entities.enemies.map(e => e.mesh);
                 if (this.game.groundMesh) targets.push(this.game.groundMesh);
@@ -616,30 +663,38 @@ export class Player {
             positions[3] = this.game.aimMarker.position.x; positions[4] = this.game.aimMarker.position.y; positions[5] = this.game.aimMarker.position.z;
             this.game.focusLaser.geometry.attributes.position.needsUpdate = true;
 
-            // Check for Kekkai even in Smart Aim mode to allow Metsu
+            // Prioritize Kekkai containing or near the locked enemy
             let bestCandidate = null;
-            this.raycaster.set(_vecPos, _vecDir);
-            const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
-            if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
 
-            if(!bestCandidate) {
-                let minD = 999;
-                this.game.entities.kekkai.forEach(k => {
-                    const kPos = k.mesh.position;
-                    const vecToK = kPos.clone().sub(_vecPos);
-                    const t = vecToK.dot(_vecDir);
-                    if (t > 0 && t < this.game.mode.config.dist.max + 20) {
-                        const closestPoint = _vecPos.clone().add(_vecDir.clone().multiplyScalar(t));
-                        const dist = kPos.distanceTo(closestPoint);
-                        const size = Math.max(k.mesh.scale.x, k.mesh.scale.y, k.mesh.scale.z);
-                        if (dist < this.game.mode.config.aimAssist.baseRadius + (size * 0.5)) {
-                            if(dist < minD){ minD = dist; bestCandidate = k; }
-                        }
-                    }
-                });
+            if (lockedEnemy) {
+                 const enemyBox = new THREE.Box3().setFromObject(lockedEnemy.mesh);
+                 // 1. Check if any kekkai intersects the enemy
+                 bestCandidate = this.game.entities.kekkai.find(k => {
+                     const kBox = new THREE.Box3().setFromObject(k.mesh);
+                     return kBox.intersectsBox(enemyBox);
+                 });
+
+                 // 2. If not, find nearest Kekkai to enemy
+                 if (!bestCandidate) {
+                     let minD = 999;
+                     this.game.entities.kekkai.forEach(k => {
+                         const dist = k.mesh.position.distanceTo(lockedEnemy.mesh.position);
+                         if (dist < 10 && dist < minD) { // 10m search radius around enemy
+                             minD = dist;
+                             bestCandidate = k;
+                         }
+                     });
+                 }
             }
 
-            // Highlight logic
+            // Fallback: Standard line-of-sight check
+            if(!bestCandidate) {
+                this.raycaster.set(_vecPos, _vecDir);
+                const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
+                if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
+            }
+
+            // Highlight logic with clearer feedback
             if (this.game.currentTargetKekkai && this.game.currentTargetKekkai !== bestCandidate) {
                 if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
                     this.game.currentTargetKekkai.edges.material.color.setHex(0xffffff);
@@ -649,8 +704,9 @@ export class Player {
             this.game.currentTargetKekkai = bestCandidate;
             if (this.game.currentTargetKekkai) {
                 if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
-                    this.game.currentTargetKekkai.edges.material.color.setHex(this.game.mode.config.colors.highlight);
-                    this.game.currentTargetKekkai.edges.material.linewidth = 3;
+                    // Flashing/Brighter color for Locked Target
+                    this.game.currentTargetKekkai.edges.material.color.setHex(0xff00ff); // Magenta for Smart Lock
+                    this.game.currentTargetKekkai.edges.material.linewidth = 5;
                 }
             }
 

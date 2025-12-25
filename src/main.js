@@ -24,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (modeName === 'awakened') {
                 document.body.classList.add('awakened-mode');
                 document.getElementById('hud').classList.add('awakened-hud');
-                document.getElementById('btnZekkai').style.display = 'flex';
                 mode = new AwakenedMode();
             } else {
                 mode = new StandardMode();
