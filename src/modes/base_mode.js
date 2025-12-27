@@ -17,7 +17,7 @@ export class BaseMode {
     }
 
     setupEnvironment(scene, world, mat) {
-         // To be implemented or shared
+         // To be implemented
     }
 
     createKekkai(p, s, r, isGhost) {

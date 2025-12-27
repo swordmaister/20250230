@@ -92,6 +92,13 @@
   <div class="mode-desc">Absolute Boundary & Chain Destruction</div>
 </div>
 
+<!-- Result Screen -->
+<div id="result-screen" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2001; flex-direction:column; align-items:center; justify-content:center; color:#fff;">
+  <div class="title" style="color:#fe0; text-shadow:0 0 20px #f00;">GAME CLEAR</div>
+  <div id="result-stats" style="font-size:20px; line-height:1.8; text-align:left; background:rgba(0,50,100,0.5); padding:30px; border:2px solid #0ff; border-radius:10px;"></div>
+  <button class="mode-btn" onclick="location.reload()">RETURN TO TITLE</button>
+</div>
+
 <div id="hud" class="novr-only">
   <div class="hud-box">
     <div class="mission-info" id="missionText">Loading...</div>

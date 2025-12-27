@@ -9,7 +9,7 @@ export class Player {
 
         // Physics Body
         this.body = new CANNON.Body({ mass: 70, shape: new CANNON.Sphere(0.6), material: game.materials.ply, fixedRotation: true, linearDamping: 0.9, collisionFilterGroup:1, collisionFilterMask:1|2|4 });
-        this.body.position.set(0, 5, 30);
+        this.body.position.set(0, 2, 60);
         game.world.addBody(this.body);
 
         this.body.addEventListener('collide', (e)=>{
@@ -45,6 +45,8 @@ export class Player {
             right: { drawing:false, startHandPos:new THREE.Vector3(), startOrigin:new THREE.Vector3(), startDir:new THREE.Vector3(), mesh:null, triggerHeld:false, bBtnHeld:false, lastDistZ:0 }
         };
 
+        this.snapTurnAngle = 0; // For VR Snap Turn
+
         // Zekkai State (Awakened only)
         this.zekkaiActive = false;
         this.zekkaiMesh = null;
@@ -53,7 +55,13 @@ export class Player {
 
     update(dt) {
         // Physics Sync
+        const prevPos = this.game.playerGroup.position.clone();
         this.game.playerGroup.position.copy(this.body.position).add(new THREE.Vector3(0, this.config.height, 0));
+
+        if (!this.game.gameState.isGameOver) {
+            const dist = this.game.playerGroup.position.distanceTo(prevPos);
+            if (dist < 10) this.game.stats.distance += dist; // Sanity check for teleport
+        }
 
         // Skating Mechanic (Speed Boost on Barriers)
         this.raycaster.set(this.body.position, new THREE.Vector3(0,-1,0));
@@ -97,21 +105,10 @@ export class Player {
         this.updateAimMarker();
     }
 
-    handleMobileInput(dt) {
-        const fwd = new THREE.Vector3(this.input.x, 0, this.input.y).applyAxisAngle(new THREE.Vector3(0,1,0), this.camAngle.yaw);
-        this.body.velocity.x = fwd.x * this.config.speed * (this.speedMult || 1.0);
-        this.body.velocity.z = fwd.z * this.config.speed * (this.speedMult || 1.0);
-
-        this.game.playerGroup.rotation.y = this.camAngle.yaw;
-        this.game.camera.rotation.x = this.camAngle.pitch;
-    }
-
     handleVRInput(dt) {
         const session = this.game.renderer.xr.getSession(); if(!session) return;
-
-        // Get Camera Direction
-        const _vecDir = new THREE.Vector3(); const _vecUp = new THREE.Vector3(0,1,0); const _vecRight = new THREE.Vector3();
         const cam = this.game.renderer.xr.getCamera(); cam.updateMatrixWorld(true);
+        const _vecDir = new THREE.Vector3(); const _vecUp = new THREE.Vector3(0,1,0); const _vecRight = new THREE.Vector3();
         this.game.camera.getWorldDirection(_vecDir); _vecDir.y = 0; _vecDir.normalize();
         _vecRight.crossVectors(_vecDir, _vecUp).normalize().negate();
 
@@ -123,44 +120,38 @@ export class Player {
             const ctrl = this.controllers[idx];
 
             if(src.handedness === 'left') {
-                // Movement
                 const stickX = gp.axes[2]; const stickY = gp.axes[3];
                 if(Math.abs(stickX) > 0.1 || Math.abs(stickY) > 0.1) {
                     const v = _vecDir.clone().multiplyScalar(-stickY).add(_vecRight.clone().multiplyScalar(-stickX));
-                    this.body.velocity.x = v.x * this.config.speed * (this.speedMult || 1.0);
-                    this.body.velocity.z = v.z * this.config.speed * (this.speedMult || 1.0);
+                    this.body.velocity.x = v.x * this.config.speed;
+                    this.body.velocity.z = v.z * this.config.speed;
                 } else {
                     this.body.velocity.x = 0; this.body.velocity.z = 0;
                 }
+                if(gp.buttons[0].pressed){ if(!this.vrState.left.triggerHeld){this.game.mode.actionKai(); this.vrState.left.triggerHeld=true;} } else this.vrState.left.triggerHeld=false;
 
-                // Trigger: Kai
-                if(gp.buttons[0].pressed) {
-                     if(!this.vrState.left.triggerHeld) { this.game.mode.actionKai(); this.vrState.left.triggerHeld=true; }
-                } else this.vrState.left.triggerHeld=false;
+                // Zekkai Toggle (X Button - Button 4 on Left)
+                if (gp.buttons[4] && gp.buttons[4].pressed && this.game.mode.isAwakened) {
+                    if (!this.zekkaiDebounce) { this.toggleZekkai(); this.zekkaiDebounce = true; }
+                } else {
+                    this.zekkaiDebounce = false;
+                }
 
-                // Grip: Draw
                 const grip = gp.buttons[1].pressed;
                 if (this.drawCooldown > 0 && grip) {}
                 else if (grip) {
-                    if (!this.vrState.left.drawing) {
-                        this.startVRDraw('left', ctrl.position, _vecDir);
-                    } else {
-                        this.updateVRDraw('left', ctrl.position, true);
-                    }
-                } else if (this.vrState.left.drawing) {
-                    this.finishVRDraw('left', false);
-                }
-
-                // X Button (Awakened: Zekkai Toggle)
-                if (gp.buttons[4].pressed && this.game.mode.isAwakened) {
-                     // Toggle logic handled in mode usually, but input is here.
-                     // Basic implementation:
-                     if(!this.zekkaiDebounce) { this.toggleZekkai(); this.zekkaiDebounce=true; }
-                } else { this.zekkaiDebounce=false; }
-
+                    if (!this.vrState.left.drawing) { this.startVRDraw('left', ctrl.position, _vecDir); } else { this.updateVRDraw('left', ctrl.position, true); }
+                } else if (this.vrState.left.drawing) { this.finishVRDraw('left', false); }
             } else { // Right Hand
-                // Turn
-                if(Math.abs(gp.axes[2]) > 0.2) this.camAngle.yaw -= gp.axes[2] * 0.04;
+                // Fix: Snap Turn logic
+                if (Math.abs(gp.axes[2]) > 0.5) {
+                    if (!this.snapTurnHeld) {
+                        this.snapTurnAngle -= Math.sign(gp.axes[2]) * (Math.PI / 4); // 45 degrees
+                        this.snapTurnHeld = true;
+                    }
+                } else {
+                    this.snapTurnHeld = false;
+                }
 
                 // Jump (A Button)
                 if(gp.buttons[4].pressed) this.jump();
@@ -182,18 +173,15 @@ export class Player {
                 const grip = gp.buttons[1].pressed;
                 if (this.drawCooldown > 0 && grip) {}
                 else if (grip) {
-                    if (!this.vrState.right.drawing) {
-                        this.startVRDraw('right', ctrl.position, _vecDir);
-                    } else {
-                        this.updateVRDraw('right', ctrl.position, false);
-                    }
-                } else if (this.vrState.right.drawing) {
-                    this.finishVRDraw('right', true);
-                }
+                    if (!this.vrState.right.drawing) { this.startVRDraw('right', ctrl.position, _vecDir); } else { this.updateVRDraw('right', ctrl.position, false); }
+                } else if (this.vrState.right.drawing) { this.finishVRDraw('right', true); }
             }
         }
+        // Apply rotation to player group
+        this.game.playerGroup.rotation.y = this.snapTurnAngle;
     }
 
+    // ... (rest of methods: startVRDraw, updateVRDraw, finishVRDraw, handleMobileInput, etc.)
     startVRDraw(hand, pos, dir) {
         const state = this.vrState[hand];
         state.drawing = true;
@@ -208,7 +196,7 @@ export class Player {
         state.mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({color:0xffffff})));
         this.game.scene.add(state.mesh);
 
-        if (hand==='left') { // Left draws Physics directly (Standard mode style) or Ghost? Code says Left=Phys/Yellow
+        if (hand==='left') {
              state.body = new CANNON.Body({mass:0, collisionFilterGroup:2, collisionFilterMask:1|2|4});
              state.body.addShape(new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)));
              state.body.position.copy(state.startOrigin);
@@ -254,53 +242,36 @@ export class Player {
         state.body = null;
     }
 
+    handleMobileInput(dt) {
+        const fwd = new THREE.Vector3(this.input.x, 0, this.input.y).applyAxisAngle(new THREE.Vector3(0,1,0), this.camAngle.yaw);
+        this.body.velocity.x = fwd.x * this.config.speed * (this.speedMult || 1.0);
+        this.body.velocity.z = fwd.z * this.config.speed * (this.speedMult || 1.0);
+
+        this.game.playerGroup.rotation.y = this.camAngle.yaw;
+        this.game.camera.rotation.x = this.camAngle.pitch;
+    }
+
     setupMobileControls() {
-        const els = this.game.els;
-        const input = this.input;
+        const stick = document.getElementById('stickZone');
+        const knob = document.getElementById('stickKnob');
         const stickStart = {x:0, y:0};
         let stickId = null;
         let tapTime = 0;
         let tapPos = {x:0, y:0};
 
-        // Stick
-        const stick = document.getElementById('stickZone');
-        const knob = document.getElementById('stickKnob');
+        const resetStick = () => { stickId=null; this.input.x=0; this.input.y=0; knob.style.transform='translate(-50%,-50%)'; };
 
-        stick.addEventListener('touchstart', e => {
-            e.preventDefault(); if(stickId) return;
-            const t = e.changedTouches[0]; stickId = t.identifier;
-            const r = stick.getBoundingClientRect();
-            stickStart.x = r.left + r.width/2; stickStart.y = r.top + r.height/2;
-            tapTime = Date.now(); tapPos = {x:t.clientX, y:t.clientY};
-            handleStick(t.clientX, t.clientY);
-        }, {passive:false});
+        stick.addEventListener('touchstart',e=>{e.preventDefault(); if(stickId)return; const t=e.changedTouches[0]; stickId=t.identifier; const r=stick.getBoundingClientRect(); stickStart.x=r.left+r.width/2; stickStart.y=r.top+r.height/2; tapTime=Date.now(); handleStick(t.clientX,t.clientY); },{passive:false});
+        stick.addEventListener('touchmove',e=>{e.preventDefault(); if(stickId===null)return; for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId)handleStick(e.changedTouches[i].clientX,e.changedTouches[i].clientY); },{passive:false});
 
-        stick.addEventListener('touchmove', e => {
-             e.preventDefault();
-             for(let i=0; i<e.changedTouches.length; i++) {
-                 if(e.changedTouches[i].identifier === stickId) handleStick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
-             }
-        }, {passive:false});
+        // Important: Listen on window for release anywhere
+        window.addEventListener('touchend',e=>{for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId){
+            // No tap jump on stick, handled by button
+            resetStick();
+        }});
+        window.addEventListener('touchcancel',e=>{for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId) resetStick();});
 
-        stick.addEventListener('touchend', e => {
-             for(let i=0; i<e.changedTouches.length; i++) {
-                 if(e.changedTouches[i].identifier === stickId) {
-                     if(Date.now() - tapTime < 200 && Math.hypot(e.changedTouches[i].clientX - tapPos.x, e.changedTouches[i].clientY - tapPos.y) < 15) {
-                         this.jump();
-                     }
-                     stickId = null; input.x = 0; input.y = 0;
-                     knob.style.transform = 'translate(-50%,-50%)';
-                 }
-             }
-        });
-
-        const handleStick = (cx, cy) => {
-            let dx = cx - stickStart.x, dy = cy - stickStart.y;
-            const d = Math.hypot(dx, dy), max = (stick.offsetWidth/2)*0.8;
-            if(d > max) { dx *= max/d; dy *= max/d; }
-            input.x = dx/max; input.y = dy/max;
-            knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-        };
+        const handleStick = (cx,cy) => { let dx=cx-stickStart.x, dy=cy-stickStart.y; const d=Math.hypot(dx,dy), max=(stick.offsetWidth/2)*0.8; if(d>max){dx*=max/d;dy*=max/d;} this.input.x=dx/max; this.input.y=dy/max; knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; };
 
         // Camera Look
         let lookId = null; let lastLook = {x:0, y:0};
@@ -316,7 +287,6 @@ export class Player {
 
         window.addEventListener('touchmove', e => {
             if(!lookId) return;
-            // e.preventDefault(); // Don't prevent default on window globally, it might break other things
             for(let i=0; i<e.changedTouches.length; i++) {
                 if(e.changedTouches[i].identifier === lookId) {
                     const t = e.changedTouches[i];
@@ -328,11 +298,8 @@ export class Player {
             }
         }, {passive:false});
 
-        const endLook = (e) => {
-            for(let i=0; i<e.changedTouches.length; i++) if(e.changedTouches[i].identifier===lookId) lookId=null;
-        };
-        window.addEventListener('touchend', endLook);
-        window.addEventListener('touchcancel', endLook);
+        const endLook = (e) => { for(let i=0; i<e.changedTouches.length; i++) if(e.changedTouches[i].identifier===lookId) lookId=null; };
+        window.addEventListener('touchend', endLook); window.addEventListener('touchcancel', endLook);
 
         // Buttons
         document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
@@ -414,7 +381,6 @@ export class Player {
                 btnRight.style.background = this.isPhysMode ? "linear-gradient(135deg,#FFD700,#FF8C00)" : "linear-gradient(135deg,#03a9f4,#0288d1)";
                 btnRight.innerHTML = this.isPhysMode ? "顕<br><span style='font-size:10px'>Hold</span>" : "結<br><span style='font-size:10px'>Hold</span>";
 
-                // If Zekkai was active, maybe visual update? (Zekkai stays on independent of Phys/Ghost mode)
                 if(this.zekkaiActive) this.updateZekkaiUI();
             }
         });
@@ -520,12 +486,18 @@ export class Player {
     }
 
     takeDamage(amount) {
-        if(this.damageCooldown > 0) return;
+        if(this.damageCooldown > 0 || this.game.gameState.isGameOver) return;
         this.hp = Math.max(0, this.hp - amount);
+        this.game.stats.damageTaken += amount;
         this.damageCooldown = 1.0;
         this.game.els.dmgOverlay.style.opacity = 0.5;
         setTimeout(() => this.game.els.dmgOverlay.style.opacity = 0, 150);
-        if(this.hp <= 0) this.game.showMsg("GAME OVER", "#f00");
+        if(this.hp <= 0) {
+            this.game.showMsg("GAME OVER", "#f00");
+            this.game.gameState.isGameOver = true;
+            // Maybe show result screen with "Failed" state or just reload
+            setTimeout(()=>location.reload(), 3000);
+        }
     }
 
     heal(amount) {
@@ -535,23 +507,17 @@ export class Player {
 
     toggleZekkai(forceState = null) {
         const newState = forceState !== null ? forceState : !this.zekkaiActive;
-
         if (newState) {
             if (this.sp < 10) { this.game.showMsg("霊力不足", "#f00"); return; }
             this.zekkaiActive = true;
             this.game.showMsg("絶界 展開", "#a0f");
-
-            // Visuals
             const g = new THREE.SphereGeometry(2, 32, 32);
             const m = new THREE.MeshPhongMaterial({color: 0xaa00ff, transparent: true, opacity: 0.3, emissive: 0x440088});
             this.zekkaiMesh = new THREE.Mesh(g, m);
             this.game.scene.add(this.zekkaiMesh);
-
-            // Physics
             this.zekkaiBody = new CANNON.Body({mass: 0, collisionFilterGroup: 2, collisionFilterMask: 4}); // Collides with enemies
             this.zekkaiBody.addShape(new CANNON.Sphere(2));
             this.game.world.addBody(this.zekkaiBody);
-
         } else {
             this.zekkaiActive = false;
             if (this.zekkaiMesh) { this.game.safeRemoveMesh(this.zekkaiMesh); this.zekkaiMesh = null; }
@@ -568,11 +534,7 @@ export class Player {
             modeBtn.style.color = "#fff";
             modeBtn.textContent = "絶界 展開中";
         } else {
-            // Revert to current phys/ghost state
-            modeBtn.className = this.isPhysMode ? "phys" : "ghost"; // This resets styles defined in CSS class?
-            // We need to clear inline styles or re-apply.
-            // Better to just clear inline styles and let class handle it,
-            // but we need to ensure text is correct.
+            modeBtn.className = this.isPhysMode ? "phys" : "ghost";
             modeBtn.style.background = "";
             modeBtn.style.borderColor = "";
             modeBtn.style.color = "";
@@ -610,43 +572,29 @@ export class Player {
     updateAimMarker() {
         if(!this.game.playerGroup || !this.game.aimMarker) return;
 
-        // Use VR controller if presenting? Actually code says updateAimMarker uses Camera always for origin in logic,
-        // but VR input sets drawing origin from controller. The aim marker is just a visual guide for the user's gaze in Mobile,
-        // or general gaze in VR if not using hands.
-
         this.game.camera.updateMatrixWorld(true);
         const _vecPos = new THREE.Vector3(); const _vecDir = new THREE.Vector3();
         this.game.camera.getWorldPosition(_vecPos);
         this.game.camera.getWorldDirection(_vecDir);
 
-        if (this.isFocusing) { // Smart Aim is now tied to Focus Mode
-            // Smart Aim / Focus Logic
+        if (this.isFocusing) { // Smart Aim
             this.game.focusLaser.visible = true;
             this.game.aimMarker.material.color.setHex(0xff0000);
 
             let targetPoint = null;
             let lockedEnemy = null;
 
-            // Awakened Mode Smart Aim Logic
             if (this.game.mode.isAwakened) {
-                // Find closest enemy to center of screen within range
                 let maxDot = 0.9; // Cone of vision
                 this.game.entities.enemies.forEach(e => {
                     const dirToE = e.mesh.position.clone().sub(_vecPos).normalize();
                     const dot = _vecDir.dot(dirToE);
-                    if (dot > maxDot) {
-                        maxDot = dot;
-                        lockedEnemy = e;
-                    }
+                    if (dot > maxDot) { maxDot = dot; lockedEnemy = e; }
                 });
-                if (lockedEnemy) {
-                    targetPoint = lockedEnemy.mesh.position.clone();
-                    this.game.aimMarker.position.copy(targetPoint);
-                }
+                if (lockedEnemy) { targetPoint = lockedEnemy.mesh.position.clone(); this.game.aimMarker.position.copy(targetPoint); }
             }
 
             if (!targetPoint) {
-                // Standard Raycast fallback
                 this.raycaster.set(_vecPos, _vecDir);
                 const targets = this.game.entities.enemies.map(e => e.mesh);
                 if (this.game.groundMesh) targets.push(this.game.groundMesh);
@@ -663,38 +611,29 @@ export class Player {
             positions[3] = this.game.aimMarker.position.x; positions[4] = this.game.aimMarker.position.y; positions[5] = this.game.aimMarker.position.z;
             this.game.focusLaser.geometry.attributes.position.needsUpdate = true;
 
-            // Prioritize Kekkai containing or near the locked enemy
+            // Prioritize Kekkai near locked enemy
             let bestCandidate = null;
-
             if (lockedEnemy) {
                  const enemyBox = new THREE.Box3().setFromObject(lockedEnemy.mesh);
-                 // 1. Check if any kekkai intersects the enemy
                  bestCandidate = this.game.entities.kekkai.find(k => {
                      const kBox = new THREE.Box3().setFromObject(k.mesh);
                      return kBox.intersectsBox(enemyBox);
                  });
-
-                 // 2. If not, find nearest Kekkai to enemy
                  if (!bestCandidate) {
                      let minD = 999;
                      this.game.entities.kekkai.forEach(k => {
                          const dist = k.mesh.position.distanceTo(lockedEnemy.mesh.position);
-                         if (dist < 10 && dist < minD) { // 10m search radius around enemy
-                             minD = dist;
-                             bestCandidate = k;
-                         }
+                         if (dist < 10 && dist < minD) { minD = dist; bestCandidate = k; }
                      });
                  }
             }
 
-            // Fallback: Standard line-of-sight check
             if(!bestCandidate) {
                 this.raycaster.set(_vecPos, _vecDir);
                 const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
                 if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
             }
 
-            // Highlight logic with clearer feedback
             if (this.game.currentTargetKekkai && this.game.currentTargetKekkai !== bestCandidate) {
                 if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
                     this.game.currentTargetKekkai.edges.material.color.setHex(0xffffff);
@@ -704,21 +643,19 @@ export class Player {
             this.game.currentTargetKekkai = bestCandidate;
             if (this.game.currentTargetKekkai) {
                 if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) {
-                    // Flashing/Brighter color for Locked Target
-                    this.game.currentTargetKekkai.edges.material.color.setHex(0xff00ff); // Magenta for Smart Lock
+                    this.game.currentTargetKekkai.edges.material.color.setHex(0xff00ff);
                     this.game.currentTargetKekkai.edges.material.linewidth = 5;
                 }
             }
 
         } else {
-            // Standard Aim Logic
+            // Standard Aim
             this.game.focusLaser.visible = false;
             this.game.aimMarker.material.color.setHex(this.config.colors ? this.config.colors.marker : 0xff0000);
 
             this.game.aimMarker.position.copy(_vecPos).add(_vecDir.clone().multiplyScalar(this.currentDist));
             this.game.aimMarker.rotation.y = Math.atan2(_vecDir.x, _vecDir.z);
 
-            // Aim Assist for picking Kekkai
             let bestCandidate = null;
             this.raycaster.set(_vecPos, _vecDir);
             const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));

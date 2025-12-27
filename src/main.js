@@ -2,7 +2,7 @@ import { Game } from './game.js';
 import { StandardMode } from './modes/standard.js';
 import { AwakenedMode } from './modes/awakened.js';
 
-let gameInstance = null;
+window.gameInstance = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     const startScreen = document.getElementById('start-screen');
@@ -29,8 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 mode = new StandardMode();
             }
 
-            gameInstance = new Game(mode);
-            gameInstance.init();
+            window.gameInstance = new Game(mode);
+            window.gameInstance.init();
         }, 500);
     }
 });
