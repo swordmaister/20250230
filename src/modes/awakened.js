@@ -1,27 +1,25 @@
-import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 import { StandardMode } from './standard.js';
 
 export class AwakenedMode extends StandardMode {
     constructor() {
         super();
         this.isAwakened = true;
-        // Override config for Awakened Mode
-        this.config.colors.sky = 0x050011; // Dark Violet Night
-        this.config.colors.ground = 0x221133;
-        this.config.colors.kekkai = 0xaa00ff; // Violet Barriers
-        this.config.colors.ghost = 0xff00ff;
-        this.config.colors.highlight = 0x00ffff; // Cyan Highlight
-
-        // Stats Buff
-        this.config.player.speed = 20.0; // Faster
-        this.config.player.jump = 30.0; // Higher
-        this.config.player.maxSp = 200; // More SP
-        this.config.kekkai.spRegen = 15.0; // Faster Regen
-
-        // Abilities
+        this.config = {
+            colors: {
+                sky: 0x050011, ground: 0x221133, kekkai: 0xaa00ff, ghost: 0xff00ff,
+                drawPhys: 0xaa00ff, drawGhost: 0xff00ff, highlight: 0x00ffff, marker: 0xff0000,
+                wall: 0x444455, building: 0x666677, concrete: 0x888899,
+                water: 0x00aaff, fire_ene: 0xff4400, phantom: 0xaa00ff, wet_ene: 0x4444ff,
+                vip: 0x00ffff, giant: 0x880000, target: 0xFFD700, gate: 0x222222
+            },
+            player: { speed: 20.0, jump: 30.0, height: 1.7, maxHp: 100, maxSp: 200 },
+            kekkai: { sensitivity: 150.0, spCostPerSec: 1.0, spRegen: 15.0, metsuCost: 2.0 },
+            dist: { min: 0.0, max: 40.0, default: 6.0 },
+            aimAssist: { baseRadius: 1.5 },
+            field: { width: 120, depth: 160, poolX: -30, poolZ: 10, roofY: 30 }
+        };
         this.smartAimActive = true;
-        this.canDoubleJump = true;
+        this.canMultiJump = true;
         this.jumpCount = 0;
     }
 
@@ -43,12 +41,10 @@ export class AwakenedMode extends StandardMode {
     update(dt, t) {
         super.update(dt, t);
 
-        // Reset jump count if on ground
         if(Math.abs(this.game.player.body.velocity.y) < 0.1) {
             this.jumpCount = 0;
         }
 
-        // Zekkai Damage Logic handled in player update mainly, but enemy repulsion here
         if (this.game.player.zekkaiActive) {
             const zPos = this.game.player.body.position;
             const range = 3.0;
@@ -57,7 +53,7 @@ export class AwakenedMode extends StandardMode {
                 if (dist < range) {
                     const pushDir = e.body.position.vsub(zPos); pushDir.normalize();
                     e.body.applyImpulse(pushDir.scale(50), e.body.position);
-                    this.killEnemy(e); // Instant kill small enemies
+                    this.killEnemy(e);
                     this.game.spawnParticle(e.mesh.position, 5, 0xaa00ff);
                 }
             });
@@ -66,22 +62,18 @@ export class AwakenedMode extends StandardMode {
 
     performMetsu(t) {
         if(!t || t.shrinking) return;
-        super.performMetsu(t); // Destroy target
+        super.performMetsu(t);
 
-        // Chain Reaction
         const range = 15.0;
         this.game.entities.kekkai.forEach(k => {
             if (k !== t && !k.shrinking) {
                 const dist = k.mesh.position.distanceTo(t.mesh.position);
                 if (dist < range) {
-                    setTimeout(() => {
-                         if (!k.shrinking) this.performMetsu(k);
-                    }, 100 + dist * 20); // Delay based on distance for ripple effect
+                    setTimeout(() => { if (!k.shrinking) this.performMetsu(k); }, 100 + dist * 20);
                 }
             }
         });
 
-        // Explosion Damage to enemies near the Metsu
         const blastRadius = 10.0;
         this.game.entities.enemies.forEach(e => {
             const dist = e.body.position.distanceTo(t.mesh.position);
@@ -89,10 +81,5 @@ export class AwakenedMode extends StandardMode {
                 this.killEnemy(e);
             }
         });
-    }
-
-    // Enhance Aim Assist
-    updateAimMarker() {
-         // Logic already hooked in Player class via instanceof check
     }
 }
