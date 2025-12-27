@@ -55,7 +55,13 @@ export class Player {
 
     update(dt) {
         // Physics Sync
+        const prevPos = this.game.playerGroup.position.clone();
         this.game.playerGroup.position.copy(this.body.position).add(new THREE.Vector3(0, this.config.height, 0));
+
+        if (!this.game.gameState.isGameOver) {
+            const dist = this.game.playerGroup.position.distanceTo(prevPos);
+            if (dist < 10) this.game.stats.distance += dist; // Sanity check for teleport
+        }
 
         // Skating Mechanic (Speed Boost on Barriers)
         this.raycaster.set(this.body.position, new THREE.Vector3(0,-1,0));
@@ -480,12 +486,18 @@ export class Player {
     }
 
     takeDamage(amount) {
-        if(this.damageCooldown > 0) return;
+        if(this.damageCooldown > 0 || this.game.gameState.isGameOver) return;
         this.hp = Math.max(0, this.hp - amount);
+        this.game.stats.damageTaken += amount;
         this.damageCooldown = 1.0;
         this.game.els.dmgOverlay.style.opacity = 0.5;
         setTimeout(() => this.game.els.dmgOverlay.style.opacity = 0, 150);
-        if(this.hp <= 0) this.game.showMsg("GAME OVER", "#f00");
+        if(this.hp <= 0) {
+            this.game.showMsg("GAME OVER", "#f00");
+            this.game.gameState.isGameOver = true;
+            // Maybe show result screen with "Failed" state or just reload
+            setTimeout(()=>location.reload(), 3000);
+        }
     }
 
     heal(amount) {

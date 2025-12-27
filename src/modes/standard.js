@@ -51,7 +51,11 @@ export class StandardMode {
 
     nextWave() {
         this.game.gameState.wave++;
-        this.startWave();
+        if (this.game.gameState.wave > 20) {
+            this.game.showResult();
+        } else {
+            this.startWave();
+        }
     }
 
     spawnVIP() {
@@ -125,7 +129,10 @@ export class StandardMode {
     spawnEnemy(forceType=null) {
         if (this.game.gameState.missionType === 'annihilation' && this.game.gameState.enemiesToSpawn <= 0) return;
         if (this.game.gameState.missionType === 'boss_composite' || this.game.gameState.missionType === 'boss_eater') { if(this.game.entities.enemies.filter(e=>!e.isBoss).length >= 5) return; }
-        if (this.game.entities.enemies.length >= 15) return;
+
+        // Balance Adjustment: Increase cap for later waves
+        const cap = 15 + Math.floor(this.game.gameState.wave / 2);
+        if (this.game.entities.enemies.length >= cap) return;
 
         const fW=this.config.field.width, fD=this.config.field.depth;
         let type = 'normal';
@@ -172,12 +179,16 @@ export class StandardMode {
             m.add(new THREE.Points(pGeo, new THREE.PointsMaterial({color:0xffaa00, size:0.3, transparent:true, opacity:0.8})));
         }
         this.game.scene.add(m);
-        this.game.entities.enemies.push({body:b, mesh:m, type, hp: (type==='fire'?5:3)*hpMult, state:'normal', wetTimer:0, isTarget:(type==='target')});
+        const hpVal = (type==='fire'?5:3)*hpMult;
+        this.game.entities.enemies.push({body:b, mesh:m, type, hp: hpVal, hpMax: hpVal, state:'normal', wetTimer:0, isTarget:(type==='target')});
         if (this.game.gameState.missionType==='annihilation') this.game.gameState.enemiesToSpawn--;
     }
 
     killEnemy(e, isEscape=false) {
         if(!this.game.entities.enemies.includes(e))return;
+
+        // Stats
+        if(!isEscape) this.game.stats.damageDealt += e.hpMax || 1;
 
         // Composite Boss Logic
         if(e.isCompositePart) {
@@ -437,7 +448,10 @@ export class StandardMode {
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.5}));
         m.add(edges); m.position.copy(p); m.rotation.y = r; this.game.scene.add(m);
         this.game.entities.kekkai.push({ body:b, mesh:m, edges:edges, shrinking:false, isGhost, isWaterCube });
-        if(!isWaterCube) this.game.spawnText("結", p, isGhost?"#0ff":"#ff0");
+        if(!isWaterCube) {
+            this.game.spawnText("結", p, isGhost?"#0ff":"#ff0");
+            if (!isGhost) this.game.stats.kekkaiCount++;
+        }
     }
 
     actionMetsu() { let t=this.game.currentTargetKekkai; if(t)this.performMetsu(t); else this.game.showMsg("対象なし","#aaa"); }

@@ -24,7 +24,16 @@ export class Game {
             nextSpawn: 0,
             missionType: 'normal',
             enemiesToSpawn: 0,
-            puzzle: null
+            puzzle: null,
+            isGameOver: false
+        };
+        this.stats = {
+            startTime: 0,
+            endTime: 0,
+            distance: 0,
+            damageTaken: 0,
+            damageDealt: 0,
+            kekkaiCount: 0
         };
         this.waterTank = { body: null, mesh: null, hp: 100, destroyed: false, waterPlane: null, floodTimer: 0, origPos: null };
         this.windows = [];
@@ -54,6 +63,7 @@ export class Game {
     }
 
     init() {
+        this.stats.startTime = Date.now();
         this.setupScene();
         this.setupPhysics();
         this.setupPlayer();
@@ -179,6 +189,45 @@ export class Game {
             const v=new THREE.Vector3(Math.random()-.5, Math.random()-.5, Math.random()-.5).multiplyScalar(3.0);
             const a=()=>{ if(!me.parent)return; me.position.add(v.clone().multiplyScalar(0.05)); me.scale.multiplyScalar(0.9); if(me.scale.x>0.05)requestAnimationFrame(a); else this.safeRemoveMesh(me); }; a();
         }
+    }
+
+    showResult() {
+        this.gameState.isGameOver = true;
+        this.stats.endTime = Date.now();
+        const duration = (this.stats.endTime - this.stats.startTime) / 1000;
+
+        // Calculate Score
+        const score = Math.floor(
+            (this.gameState.wave * 1000) +
+            (this.stats.damageDealt * 10) -
+            (this.stats.damageTaken * 20) +
+            (this.stats.kekkaiCount * 5) -
+            (duration * 2)
+        );
+
+        // Grade
+        let rank = "C";
+        if (score > 10000) rank = "B";
+        if (score > 20000) rank = "A";
+        if (score > 30000) rank = "S";
+        if (score > 50000) rank = "SSS";
+
+        const html = `
+            <span style="color:#aaa;">CLEAR TIME:</span> ${duration.toFixed(1)}s<br>
+            <span style="color:#aaa;">MAX WAVE:</span> ${this.gameState.wave}<br>
+            <span style="color:#0f0;">DAMAGE DEALT:</span> ${Math.floor(this.stats.damageDealt)}<br>
+            <span style="color:#f00;">DAMAGE TAKEN:</span> ${Math.floor(this.stats.damageTaken)}<br>
+            <span style="color:#ff0;">KEKKAI CREATED:</span> ${this.stats.kekkaiCount}<br>
+            <span style="color:#0ff;">DISTANCE:</span> ${Math.floor(this.stats.distance)}m<br>
+            <hr style="border-color:#555;">
+            <span style="font-size:30px; font-weight:bold;">SCORE: ${score}</span><br>
+            <span style="font-size:50px; font-weight:900; color:${rank==='SSS'?'#fe0':'#fff'};">RANK ${rank}</span>
+        `;
+
+        document.getElementById('result-screen').style.display = 'flex';
+        document.getElementById('result-stats').innerHTML = html;
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('uiLayer').style.display = 'none';
     }
 
     safeRemoveMesh(mesh) {
