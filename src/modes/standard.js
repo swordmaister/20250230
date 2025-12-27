@@ -37,10 +37,16 @@ export class StandardMode {
         else if(t===1){this.game.gameState.missionType='escort'; this.game.els.missionText.textContent="護衛任務: VIPの保護"; this.game.gameState.req=30; this.spawnVIP(); }
         else if(t===2){this.game.gameState.missionType='boss_composite'; this.game.els.missionText.textContent="解体任務: 大型構造物"; this.game.gameState.req=1; this.spawnCompositeBoss(); }
         else if(t===3){this.game.gameState.missionType='hunt'; this.game.els.missionText.textContent="討伐任務: 黄金標的"; this.game.gameState.req=1; this.spawnEnemy('target'); }
-        else if(t===4){this.game.gameState.missionType='boss_eater'; this.game.els.missionText.textContent="決戦: 結界食い"; this.game.gameState.req=1; /*Boss Logic*/ }
+        else if(t===4){
+            this.game.gameState.missionType='boss_eater';
+            this.game.els.missionText.textContent="決戦: 結界食い";
+            this.game.gameState.req=1;
+            this.spawnEnemy('boss_eater_core');
+            for(let i=0;i<5;i++) this.spawnEnemy('eater'); // Spawn Eater Minions
+        }
 
         this.game.showMsg(`WAVE ${this.game.gameState.wave} START`, "#fff");
-        for(let i=0;i<8;i++) this.spawnEnemy();
+        if(t!==4) for(let i=0;i<8;i++) this.spawnEnemy(); // Don't double spawn for boss
     }
 
     nextWave() {
@@ -74,6 +80,48 @@ export class StandardMode {
         this.game.spawnText("解体目標出現", new THREE.Vector3(0,30,0), "#f00");
     }
 
+    spawnPuzzleGroup() {
+        const cx = (Math.random()-.5)*this.config.field.width;
+        const cz = (Math.random()-.5)*this.config.field.depth;
+        const cy = 15;
+        const coreB = new CANNON.Body({mass:50, shape:new CANNON.Sphere(1.5), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+        coreB.position.set(cx, cy, cz); this.game.world.addBody(coreB);
+        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5), new THREE.MeshStandardMaterial({color:0xffff00}));
+        this.game.scene.add(coreM);
+
+        const coreId = coreB.id;
+        const parts = [];
+        const colors = [0xff0000, 0x00ff00, 0x0000ff];
+
+        // Spawn Core
+        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:10, puzzleParts:[], isInvincible:true});
+        const coreRef = this.game.entities.enemies[this.game.entities.enemies.length-1];
+
+        // Spawn 3 Minions
+        colors.forEach((c, i) => {
+            const angle = (i / 3) * Math.PI * 2;
+            const mx = cx + Math.cos(angle) * 5;
+            const mz = cz + Math.sin(angle) * 5;
+            const mb = new CANNON.Body({mass:20, shape:new CANNON.Box(new CANNON.Vec3(1,1,1)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(2,2,2), new THREE.MeshStandardMaterial({color:c}));
+            this.game.scene.add(mm);
+
+            const minion = {body:mb, mesh:mm, type:'puzzle_minion', hp:3, puzzleId:i, parentId:coreId, colorVal:c};
+            this.game.entities.enemies.push(minion);
+            parts.push(minion);
+        });
+
+        // Randomize Order logic is handled in killEnemy by checking remaining parts or specific index?
+        // Simpler: Killing any minion is fine, but they must ALL die to make core vulnerable.
+        // Or "Correct Order" as per spec? Spec says "Correct Order (randomly set)".
+        // Let's assign an order to the parts.
+        const order = [0, 1, 2].sort(() => Math.random() - 0.5);
+        coreRef.puzzleOrder = order; // [2, 0, 1] means kill index 2, then 0, then 1.
+        coreRef.currentStep = 0;
+        this.game.spawnText("PUZZLE: 順序ヲ守レ", new THREE.Vector3(cx, cy+5, cz), "#ff0");
+    }
+
     spawnEnemy(forceType=null) {
         if (this.game.gameState.missionType === 'annihilation' && this.game.gameState.enemiesToSpawn <= 0) return;
         if (this.game.gameState.missionType === 'boss_composite' || this.game.gameState.missionType === 'boss_eater') { if(this.game.entities.enemies.filter(e=>!e.isBoss).length >= 5) return; }
@@ -84,8 +132,11 @@ export class StandardMode {
         if(forceType) type = forceType;
         else if (this.game.gameState.wave % 5 === 1) type = (Math.random() < 0.6) ? 'fire' : 'phantom';
         else if (this.game.gameState.wave % 5 === 2) type = 'normal';
+        else if (this.game.gameState.wave % 5 === 3) type = (Math.random() < 0.3) ? 'puzzle' : 'normal'; // Wave 3: Puzzle chance
         else if (this.game.gameState.wave % 5 === 4) type = 'target';
         else type = (Math.random() < 0.3) ? 'fire' : ((Math.random() < 0.3) ? 'phantom' : (Math.random() < 0.3 ? 'cube' : (Math.random() < 0.5 ? 'roller' : 'jumper')));
+
+        if (type === 'puzzle') { this.spawnPuzzleGroup(); return; }
 
         let x,y,z;
         if (type === 'fire' || type === 'phantom' || type === 'cube') { x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=15 + Math.random()*10; }
@@ -98,12 +149,15 @@ export class StandardMode {
         if(type==='phantom') { sz=1.0; col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
         else if(type==='fire') { col.setHex(this.config.colors.fire_ene); geo=new THREE.IcosahedronGeometry(sz,1); }
         else if(type==='target') { col.setHex(this.config.colors.target); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='eater') { sz=0.9; col.setHex(0xaa2222); geo=new THREE.OctahedronGeometry(sz,0); }
         else if(type==='cube') { sz=1.2; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.BoxGeometry(sz,sz,sz); }
         else if(type==='roller') { sz=1.0; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.TetrahedronGeometry(sz); }
         else if(type==='jumper') { sz=1.0; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.TorusGeometry(sz*0.6, sz*0.2, 8, 16); }
         else { geo=new THREE.IcosahedronGeometry(sz,1); }
 
-        const b=new CANNON.Body({mass:15, shape:(type==='cube'?new CANNON.Box(new CANNON.Vec3(sz/2,sz/2,sz/2)):new CANNON.Sphere(sz)), material:this.game.materials.ene, linearDamping:0.4, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+        // Mask 1(Player)|2(Kekkai)|4(Enemy). Fire ignores Kekkai(2) initially -> Mask 1|4 = 5
+        const mask = (type === 'fire') ? 1|4 : 1|2|4;
+        const b=new CANNON.Body({mass:15, shape:(type==='cube'?new CANNON.Box(new CANNON.Vec3(sz/2,sz/2,sz/2)):new CANNON.Sphere(sz)), material:this.game.materials.ene, linearDamping:0.4, collisionFilterGroup:4, collisionFilterMask:mask});
         b.position.set(x,y,z); this.game.world.addBody(b);
 
         let mat;
@@ -124,11 +178,53 @@ export class StandardMode {
 
     killEnemy(e, isEscape=false) {
         if(!this.game.entities.enemies.includes(e))return;
+
+        // Composite Boss Logic
         if(e.isCompositePart) {
             this.game.spawnParticle(e.mesh.position,15,0xffaa00); this.removeEnemy(e);
             const p=this.game.entities.enemies.find(en=>en.body.id===e.parentId); if(p){p.partsCount--; if(p.partsCount<=0) { this.removeEnemy(p); this.game.gameState.req=0; }}
             return;
         }
+
+        // Puzzle Logic
+        if(e.type === 'puzzle_minion') {
+            const core = this.game.entities.enemies.find(en => en.body.id === e.parentId);
+            if(core) {
+                const requiredIndex = core.puzzleOrder[core.currentStep];
+                if (e.puzzleId === requiredIndex) {
+                    // Correct Order
+                    this.game.spawnText("OK!", e.mesh.position, "#0f0");
+                    this.game.spawnParticle(e.mesh.position, 15, e.colorVal);
+                    this.removeEnemy(e);
+                    core.currentStep++;
+                    if (core.currentStep >= 3) {
+                        core.isInvincible = false;
+                        core.mesh.material.color.setHex(0xff0000); // Vulnerable
+                        this.game.spawnText("防御解除!", core.mesh.position, "#f00");
+                    }
+                } else {
+                    // Wrong Order - Punish (Respawn or explosion?)
+                    this.game.spawnText("順序不正!", e.mesh.position, "#f00");
+                    this.game.spawnParticle(e.mesh.position, 10, 0x555555);
+                    // Don't kill, maybe push away
+                    const push = e.body.position.vsub(this.game.player.body.position); push.normalize();
+                    e.body.applyImpulse(push.scale(50), e.body.position);
+                    // Reset puzzle? Or just fail this attempt.
+                    // Spec says "Cannot fully kill".
+                }
+            } else {
+                this.removeEnemy(e); // Orphaned minion
+            }
+            return;
+        }
+        if(e.type === 'puzzle_core') {
+            if(e.isInvincible && !isEscape) {
+                this.game.spawnText("無敵", e.mesh.position, "#888");
+                return;
+            }
+            // If vulnerable, proceed to standard kill
+        }
+
         this.removeEnemy(e);
         this.game.spawnParticle(e.mesh.position, 20, e.type==='fire'?0xff4400:0xffffff);
         if(this.game.gameState.missionType==='hunt' && e.isTarget) { this.game.gameState.req=0; }
@@ -216,6 +312,7 @@ export class StandardMode {
                 if (e.state === 'wet') {
                     e.wetTimer -= dt; e.mesh.material.color.setHex(this.config.colors.wet_ene); e.mesh.material.emissiveIntensity = 0;
                     e.body.linearDamping = 0.95; e.body.angularDamping = 0.95;
+                    if (e.body.collisionFilterMask !== (1|2|4)) e.body.collisionFilterMask = 1|2|4; // Enable Kekkai Collision
                     const distFromCenter = Math.sqrt(pos.x*pos.x + pos.z*pos.z);
                     if (distFromCenter > 50) {
                         const returnDir = new CANNON.Vec3(-pos.x, 0, -pos.z); returnDir.normalize();
@@ -225,6 +322,7 @@ export class StandardMode {
                         e.state = 'normal'; e.mesh.material.color.setHex(this.config.colors.fire_ene); e.mesh.material.emissiveIntensity = 1;
                         if(e.mesh.children[0]) e.mesh.children[0].visible = true; this.game.spawnText("再燃!", new THREE.Vector3(pos.x, pos.y, pos.z), "#f40");
                         e.body.velocity.y = 10;
+                        e.body.collisionFilterMask = 1|4; // Disable Kekkai Collision
                     }
                 } else {
                     e.body.linearDamping = 0.5;
@@ -238,11 +336,30 @@ export class StandardMode {
                         if(vip && distToT === pos.distanceTo(vip.body.position)) { vip.hp--; this.game.spawnText("VIP Damage!", new THREE.Vector3(vip.body.position.x, vip.body.position.y+2, vip.body.position.z), "#f00"); }
                         else this.game.player.takeDamage(1);
                     }
-                    this.game.entities.kekkai.forEach(k => {
-                       if (!k.isGhost && k.mesh.position.distanceTo(pos) < Math.max(k.mesh.scale.x, k.mesh.scale.z)) {
-                           this.game.spawnParticle(pos, 5, 0xff0000); this.removeKekkai(k);
-                       }
-                    });
+                    // Fire Enemy passes through barriers naturally via collision mask (1|4).
+                }
+            }
+            else if (e.type === 'eater') {
+                // Eater Logic: Prioritize Kekkai
+                let targetK = null; let minD = 999;
+                this.game.entities.kekkai.forEach(k => {
+                    const d = pos.distanceTo(k.mesh.position);
+                    if(d < 80 && d < minD) { minD = d; targetK = k; }
+                });
+
+                const dest = targetK ? targetK.mesh.position : targetPos;
+                const dir = new CANNON.Vec3().copy(dest).vsub(pos); dir.normalize();
+                e.body.applyForce(dir.scale(25), pos);
+
+                if(targetK) {
+                    const box = new THREE.Box3().setFromObject(targetK.mesh);
+                    if (box.intersectsSphere(new THREE.Sphere(pos, 1.2))) {
+                        this.game.spawnParticle(e.mesh.position, 20, 0xff00ff);
+                        this.removeKekkai(targetK);
+                    }
+                } else if (distToT < 2.0) {
+                    if(vip && distToT === pos.distanceTo(vip.body.position)) { vip.hp--; }
+                    else this.game.player.takeDamage(1);
                 }
             }
             else if (e.type === 'phantom') {
