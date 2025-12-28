@@ -36,6 +36,7 @@ export class Game {
             kekkaiCount: 0
         };
         this.waterTank = { body: null, mesh: null, hp: 100, destroyed: false, waterPlane: null, floodTimer: 0, origPos: null };
+        this.gatePos = null; // Defined in mode setup
         this.windows = [];
         this.aimMarker = null;
         this.focusLaser = null;
