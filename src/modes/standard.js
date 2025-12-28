@@ -37,7 +37,7 @@ export class StandardMode {
         this.game.gameState.enemiesToSpawn = 0;
         const t = (this.game.gameState.wave - 1) % 5;
         if(t===0){this.game.gameState.missionType='normal'; this.game.els.missionText.textContent="通常任務: 敵部隊排除"; this.game.gameState.req=5; }
-        else if(t===1){this.game.gameState.missionType='escort'; this.game.els.missionText.textContent="護衛任務: VIPの保護"; this.game.gameState.req=30; this.spawnVIP(); }
+        else if(t===1){this.game.gameState.missionType='escort'; this.game.els.missionText.textContent="護衛任務: VIPを校門へ"; this.game.gameState.req=10; this.spawnVIP(); }
         else if(t===2){this.game.gameState.missionType='boss_composite'; this.game.els.missionText.textContent="解体任務: 大型構造物"; this.game.gameState.req=1; this.spawnCompositeBoss(); }
         else if(t===3){this.game.gameState.missionType='hunt'; this.game.els.missionText.textContent="討伐任務: 黄金標的"; this.game.gameState.req=1; this.spawnEnemy('target'); }
         else if(t===4){
@@ -62,13 +62,22 @@ export class StandardMode {
     }
 
     spawnVIP() {
-        const pos = new CANNON.Vec3(this.game.player.body.position.x, this.game.player.body.position.y + 5, this.game.player.body.position.z);
+        const pos = new CANNON.Vec3(20, 30, 0); // Rooftop start
         const b = new CANNON.Body({mass:10, shape:new CANNON.Sphere(1), collisionFilterGroup:1, collisionFilterMask:1|2|4});
-        b.position.copy(pos); b.linearDamping = 0.5; this.game.world.addBody(b);
+        b.position.copy(pos); b.linearDamping = 0.8; this.game.world.addBody(b);
         const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1,2), new THREE.MeshPhongMaterial({color:this.config.colors.vip, emissive:0x0044ff}));
         this.game.scene.add(m);
-        this.game.vip = { body:b, mesh:m, hp:10 };
-        this.game.spawnText("護衛開始", new THREE.Vector3(pos.x, pos.y, pos.z), "#0ff");
+        this.game.vip = {
+            body:b, mesh:m, hp:10,
+            state: 'roof',
+            waypoints: [
+                new THREE.Vector3(0, 30, -40), // Slope Top
+                new THREE.Vector3(-3, 0, 35),  // Slope Bottom
+                new THREE.Vector3(0, 0, 75)    // Gate
+            ],
+            wpIndex: 0
+        };
+        this.game.spawnText("護衛開始: 屋上->校門", new THREE.Vector3(pos.x, pos.y, pos.z), "#0ff");
     }
 
     spawnCompositeBoss() {
@@ -304,8 +313,31 @@ export class StandardMode {
 
         if(vip) {
             vip.mesh.position.copy(vip.body.position); vip.mesh.quaternion.copy(vip.body.quaternion);
-            const toP = playerBody.position.vsub(vip.body.position); toP.y=0; toP.normalize();
-            if(playerBody.position.distanceTo(vip.body.position)>5) vip.body.applyForce(toP.scale(20), vip.body.position);
+
+            // Waypoint Logic
+            if(vip.wpIndex < vip.waypoints.length) {
+                const target = vip.waypoints[vip.wpIndex];
+                const vPos = new THREE.Vector3(vip.body.position.x, vip.body.position.y, vip.body.position.z);
+                const dist2D = Math.hypot(target.x - vPos.x, target.z - vPos.z);
+
+                if (dist2D < 3.0) {
+                    vip.wpIndex++;
+                } else {
+                    const dir = new CANNON.Vec3(target.x - vPos.x, 0, target.z - vPos.z);
+                    dir.normalize();
+                    // Slow movement force
+                    if(vip.body.velocity.length() < 3.0) {
+                        vip.body.applyForce(dir.scale(30), vip.body.position);
+                    }
+                }
+            } else {
+                // Reached Gate (End of waypoints)
+                if(this.game.gameState.missionType === 'escort' && this.game.gameState.req > 0) {
+                    this.game.gameState.req = 0; // Trigger win
+                    this.game.showMsg("VIP 登校完了!", "#0f0");
+                }
+            }
+
             if(vip.hp <= 0) { this.game.showMsg("護衛対象死亡... GAME OVER", "#f00"); setTimeout(()=>{location.reload()}, 3000); }
         }
 
@@ -541,6 +573,27 @@ export class StandardMode {
         createBox(0, 4, -FD/2, FW, 8, 2, CFG.colors.wall); createBox(0, 4, FD/2, FW, 8, 2, CFG.colors.wall);
         const gZ = FD/2; const gateW = 24;
         createBox(-gateW/2-1, 4, gZ, 2, 8, 2, CFG.colors.wall); createBox(gateW/2+1, 4, gZ, 2, 8, 2, CFG.colors.wall);
-        const gateB = new CANNON.Body({mass:0, material:mat}); gateB.addShape(new CANNON.Box(new CANNON.Vec3(gateW/2, 3, 0.1))); gateB.position.set(0, 3, gZ); world.addBody(gateB);
+
+        // Lattice Gate
+        this.game.gatePos = new THREE.Vector3(0, 0, gZ);
+        const gateGroup = new THREE.Group();
+        gateGroup.position.set(0, 4, gZ);
+        scene.add(gateGroup);
+
+        // Vertical bars
+        for(let x=-gateW/2; x<=gateW/2; x+=1.5) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 8, 0.3), new THREE.MeshStandardMaterial({color:0x333333}));
+            bar.position.set(x, 0, 0); gateGroup.add(bar);
+        }
+        // Horizontal bars
+        for(let y=-2; y<=2; y+=2) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(gateW, 0.3, 0.3), new THREE.MeshStandardMaterial({color:0x333333}));
+            bar.position.set(0, y, 0); gateGroup.add(bar);
+        }
+
+        const gateB = new CANNON.Body({mass:0, material:mat});
+        gateB.addShape(new CANNON.Box(new CANNON.Vec3(gateW/2, 4, 0.5)));
+        gateB.position.set(0, 4, gZ);
+        world.addBody(gateB);
     }
 }
