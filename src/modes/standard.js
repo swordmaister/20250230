@@ -255,6 +255,13 @@ export class StandardMode {
         this.game.world.removeBody(e.body);
     }
 
+    removeKekkai(k) {
+        if (this.game.currentTargetKekkai === k) this.game.currentTargetKekkai = null;
+        this.game.safeRemoveMesh(k.mesh);
+        if (k.body) this.game.world.removeBody(k.body);
+        this.game.entities.kekkai = this.game.entities.kekkai.filter(o => o !== k);
+    }
+
     updateTank(dt) {
         const waterTank = this.game.waterTank;
         if(!waterTank.mesh) return;
