@@ -19,7 +19,7 @@ export class AwakenedMode extends StandardMode {
             field: { width: 120, depth: 160, poolX: -30, poolZ: 10, roofY: 30 }
         };
         this.smartAimActive = true;
-        this.canMultiJump = true;
+        this.allowMultiJump = true;
         this.jumpCount = 0;
     }
 

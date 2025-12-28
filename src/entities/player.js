@@ -480,7 +480,7 @@ export class Player {
 
     jump() {
         if(Math.abs(this.body.velocity.y) < 1) this.body.velocity.y = this.config.jump;
-        else if (this.game.mode.canMultiJump && this.game.mode.canMultiJump(this)) {
+        else if (this.game.mode.allowMultiJump && this.game.mode.canMultiJump(this)) {
             // Logic handled by mode if multijump allowed
         }
     }

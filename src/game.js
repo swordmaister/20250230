@@ -100,6 +100,55 @@ export class Game {
         this.focusLaser.visible = false;
         this.focusLaser.frustumCulled = false;
         this.scene.add(this.focusLaser);
+
+        this.setupVRHud();
+    }
+
+    setupVRHud() {
+        this.vrHudCanvas = document.createElement('canvas');
+        this.vrHudCanvas.width = 512; this.vrHudCanvas.height = 128;
+        this.vrHudCtx = this.vrHudCanvas.getContext('2d');
+        const tex = new THREE.CanvasTexture(this.vrHudCanvas);
+        this.vrHudMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.0, 0.25),
+            new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false })
+        );
+        this.vrHudMesh.position.set(0, 0.3, -1);
+        this.camera.add(this.vrHudMesh);
+    }
+
+    updateVRHud() {
+        if(!this.renderer.xr.isPresenting || !this.vrHudCtx) return;
+
+        const ctx = this.vrHudCtx;
+        const gs = this.gameState;
+        const hp = this.player ? this.player.hp : 0;
+        const sp = this.player ? this.player.sp : 0;
+        const dist = this.player ? this.player.currentDist : 0;
+
+        ctx.clearRect(0,0,512,128);
+        ctx.fillStyle="rgba(0,20,40,0.6)";
+        ctx.fillRect(0,0,512,128);
+        ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(2,2,508,124);
+
+        ctx.font="bold 24px sans-serif"; ctx.fillStyle="#ffeb3b"; ctx.fillText(`WAVE ${gs.wave}`,20,30);
+        if(gs.missionType==='boss_eater') { ctx.fillStyle="#ff0055"; ctx.fillText(`BOSS 結界食い`, 140, 30); }
+
+        ctx.font="20px sans-serif"; ctx.fillStyle="#fff";
+        ctx.fillText(`残: ${gs.req}`,20,60);
+        ctx.fillText(`距離: ${dist.toFixed(1)}m`,20,90);
+
+        ctx.fillStyle = hp < 30 ? "#f55" : "#0f0"; ctx.fillText(`HP: ${Math.floor(hp)}`,300,30);
+        ctx.fillStyle = "#555"; ctx.fillRect(300,35,180,15);
+        ctx.fillStyle = hp < 30 ? "#f00" : "#0f0"; ctx.fillRect(300,35,180*(hp/100),15);
+
+        ctx.fillStyle = "#0ff"; ctx.fillText(`SP: ${Math.floor(sp)}`,300,75);
+        ctx.fillStyle = "#555"; ctx.fillRect(300,80,180,15);
+        ctx.fillStyle = sp < 20 ? "#f00" : "#00bfff"; ctx.fillRect(300,80,180*(sp/100),15);
+
+        if(this.player && this.player.drawCooldown > 0) { ctx.fillStyle="#f0f"; ctx.fillText("！共鳴妨害！", 20, 115); }
+
+        this.vrHudMesh.material.map.needsUpdate = true;
     }
 
     setupPhysics() {
@@ -134,6 +183,7 @@ export class Game {
 
         this.mode.update(dt, t);
         this.player.update(dt);
+        this.updateVRHud();
 
         // Entity updates
         this.entities.waterSplashes = this.entities.waterSplashes.filter(s => { s.timer -= dt; return s.timer > 0; });
