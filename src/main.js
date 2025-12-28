@@ -2,35 +2,51 @@ import { Game } from './game.js';
 import { StandardMode } from './modes/standard.js';
 import { AwakenedMode } from './modes/awakened.js';
 
-window.gameInstance = null;
+window.onload = function() {
+    // Mode Selection Screen
+    const modeScreen = document.createElement('div');
+    modeScreen.id = 'mode-screen';
+    modeScreen.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:9999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:#fff;font-family:sans-serif;';
 
-document.addEventListener('DOMContentLoaded', () => {
-    const startScreen = document.getElementById('start-screen');
-    const stdBtn = document.getElementById('start-std');
-    const awkBtn = document.getElementById('start-awk');
+    const title = document.createElement('h1');
+    title.textContent = "True Kekkai VR";
+    title.style.cssText = "font-size:48px; text-shadow:0 0 20px #0f0; margin-bottom:60px; color:#fff;";
+    modeScreen.appendChild(title);
 
-    stdBtn.addEventListener('click', () => startGame('standard'));
-    awkBtn.addEventListener('click', () => startGame('awakened'));
+    const btnStandard = createButton("Standard Mode", "#0f0", "Original Sensitivity Tuned Experience");
+    const btnAwakened = createButton("Awakened Mode", "#a0f", "Absolute Boundary & Chain Destruction");
 
-    function startGame(modeName) {
-        startScreen.style.opacity = '0';
-        setTimeout(() => {
-            startScreen.style.display = 'none';
-            document.getElementById('hud').style.display = 'block';
-            document.getElementById('uiLayer').style.display = 'block';
-            document.getElementById('vrBtn').style.display = 'block';
+    btnStandard.onclick = () => startGame(new StandardMode());
+    btnAwakened.onclick = () => startGame(new AwakenedMode());
 
-            let mode;
-            if (modeName === 'awakened') {
-                document.body.classList.add('awakened-mode');
-                document.getElementById('hud').classList.add('awakened-hud');
-                mode = new AwakenedMode();
-            } else {
-                mode = new StandardMode();
-            }
+    modeScreen.appendChild(btnStandard);
+    modeScreen.appendChild(document.createElement('br'));
+    modeScreen.appendChild(btnAwakened);
+    document.body.appendChild(modeScreen);
 
-            window.gameInstance = new Game(mode);
-            window.gameInstance.init();
-        }, 500);
+    function createButton(text, color, sub) {
+        const c = document.createElement('div');
+        c.style.textAlign = 'center';
+
+        const b = document.createElement('button');
+        b.textContent = text;
+        b.style.cssText = `padding:20px 60px; font-size:24px; font-weight:bold; color:${color}; background:rgba(0,0,0,0.8); border:3px solid ${color}; border-radius:12px; cursor:pointer; min-width:300px; box-shadow:0 0 15px ${color}; transition:transform 0.1s;`;
+        b.onmouseover = () => { b.style.transform = 'scale(1.05)'; b.style.background = 'rgba(255,255,255,0.1)'; };
+        b.onmouseout = () => { b.style.transform = 'scale(1.0)'; b.style.background = 'rgba(0,0,0,0.8)'; };
+
+        const s = document.createElement('div');
+        s.textContent = sub;
+        s.style.cssText = "margin-top:8px; font-size:14px; color:#aaa;";
+
+        c.appendChild(b);
+        c.appendChild(s);
+        return c;
     }
-});
+
+    function startGame(modeInstance) {
+        modeScreen.style.opacity = 0;
+        setTimeout(() => modeScreen.remove(), 500);
+        const game = new Game(modeInstance);
+        game.init();
+    }
+};

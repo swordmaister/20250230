@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+
 export class StandardMode {
     constructor() {
         this.game = null;
