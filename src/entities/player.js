@@ -304,12 +304,28 @@ export class Player {
         // Buttons
         document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
 
-        // Stick Jump Button
+        // Stick Jump Button (Tap Priority)
         const stickJump = document.getElementById('stickJumpBtn');
         if(stickJump) {
+            let jumpTouchStart = 0;
+            let jumpTouchPos = {x:0, y:0};
+
+            // Allow bubble for stick movement
             stickJump.addEventListener('touchstart', e => {
-                e.preventDefault(); e.stopPropagation();
-                this.jump();
+                jumpTouchStart = Date.now();
+                jumpTouchPos = {x:e.changedTouches[0].clientX, y:e.changedTouches[0].clientY};
+                // Do not preventDefault/stopPropagation so stickZone gets it
+            }, {passive:true});
+
+            stickJump.addEventListener('touchend', e => {
+                const dt = Date.now() - jumpTouchStart;
+                const t = e.changedTouches[0];
+                const dist = Math.hypot(t.clientX - jumpTouchPos.x, t.clientY - jumpTouchPos.y);
+
+                // Jump if quick tap and minimal movement (Stricter to prioritize move)
+                if (dt < 150 && dist < 5) {
+                    this.jump();
+                }
             });
         }
 
