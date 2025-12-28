@@ -304,6 +304,15 @@ export class Player {
         // Buttons
         document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
 
+        // Stick Jump Button
+        const stickJump = document.getElementById('stickJumpBtn');
+        if(stickJump) {
+            stickJump.addEventListener('touchstart', e => {
+                e.preventDefault(); e.stopPropagation();
+                this.jump();
+            });
+        }
+
         // Distance / Focus
         let distTouchStart = {x:0,y:0}; let distBtnTimer=null; let distBtnLongPress=false;
         const btnUp = document.getElementById('btnUp');

@@ -6,11 +6,11 @@ export class StandardMode {
         this.game = null;
         this.config = {
             colors: {
-                sky: 0x102030, ground: 0x333344, kekkai: 0xffff00, ghost: 0x00ffff,
+                sky: 0x87CEEB, ground: 0x667755, kekkai: 0xffff00, ghost: 0x00ffff,
                 drawPhys: 0xffff00, drawGhost: 0x00ffff, highlight: 0xff0044, marker: 0xff0000,
-                wall: 0x444455, building: 0x666677, concrete: 0x888899,
+                wall: 0x888899, building: 0xbbbbcc, concrete: 0xaaaaaa,
                 water: 0x00aaff, fire_ene: 0xff4400, phantom: 0xaa00ff, wet_ene: 0x4444ff,
-                vip: 0x00ffff, giant: 0x880000, target: 0xFFD700, gate: 0x222222
+                vip: 0x00ffff, giant: 0x880000, target: 0xFFD700, gate: 0x333333
             },
             player: { speed: 10.0, jump: 22.0, height: 1.7, maxHp: 100, maxSp: 100 },
             kekkai: { sensitivity: 150.0, spCostPerSec: 1.0, spRegen: 5.0, metsuCost: 2.0 },
@@ -452,6 +452,29 @@ export class StandardMode {
                 }
             }
             if(pos.y < -10) this.killEnemy(e);
+
+            // Check Bounds (60x80 approx limits)
+            const limitX = 62; const limitZ = 82;
+            if(Math.abs(pos.x) > limitX || Math.abs(pos.z) > limitZ) {
+                e.outsideTimer = (e.outsideTimer || 0) + dt;
+                if(e.outsideTimer > 10.0) {
+                    this.game.spawnText("敵撤退", pos, "#aaa");
+                    this.killEnemy(e, true);
+                } else {
+                    // Jump back to center
+                    if(e.body.velocity.y < 1.0 && pos.y < 5.0) {
+                        e.body.velocity.y = 20;
+                        const toCenter = new CANNON.Vec3(0, 0, 0).vsub(pos);
+                        toCenter.y = 0; toCenter.normalize();
+                        e.body.velocity.x = toCenter.x * 15;
+                        e.body.velocity.z = toCenter.z * 15;
+                        this.game.spawnText("戻る!", pos, "#ff0");
+                    }
+                }
+            } else {
+                e.outsideTimer = 0;
+            }
+
             e.mesh.position.copy(pos); e.mesh.quaternion.copy(e.body.quaternion);
         });
     }
@@ -520,6 +543,9 @@ export class StandardMode {
         const groundMesh = new THREE.Mesh(gGeo,gMat); groundMesh.rotation.x=-Math.PI/2; groundMesh.receiveShadow=true; scene.add(groundMesh);
         const gBody=new CANNON.Body({mass:0,material:mat}); gBody.addShape(new CANNON.Plane()); gBody.quaternion.setFromEuler(-Math.PI/2,0,0); world.addBody(gBody);
         this.game.groundMesh = groundMesh;
+
+        // Brighter Sun for Day
+        sun.intensity = 1.8;
 
         const bX=20, bZ=0, bW=40, bD=80, bH=CFG.field.roofY;
         const createBox=(x,y,z,w,h,d,col,tr=false,op=1,rotY=0)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:col,transparent:tr,opacity:op})); m.position.set(x,y,z); m.rotation.y=rotY; m.castShadow=!tr; m.receiveShadow=true; scene.add(m); const b=new CANNON.Body({mass:0,material:mat}); b.addShape(new CANNON.Box(new CANNON.Vec3(w/2,h/2,d/2))); b.position.copy(m.position); b.quaternion.copy(m.quaternion); world.addBody(b); return m; };
