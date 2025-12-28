@@ -196,6 +196,17 @@ export class StandardMode {
         if (this.game.gameState.missionType==='annihilation') this.game.gameState.enemiesToSpawn--;
     }
 
+    completeWave() {
+        this.game.showMsg(`WAVE ${this.game.gameState.wave} CLEAR`, "#fe0");
+        [...this.game.entities.enemies].forEach(en => this.removeEnemy(en));
+        if (this.game.vip) {
+            this.game.world.removeBody(this.game.vip.body);
+            this.game.scene.remove(this.game.vip.mesh);
+            this.game.vip = null;
+        }
+        setTimeout(() => this.nextWave(), 2000);
+    }
+
     killEnemy(e, isEscape=false) {
         if(!this.game.entities.enemies.includes(e))return;
 
@@ -205,7 +216,7 @@ export class StandardMode {
         // Composite Boss Logic
         if(e.isCompositePart) {
             this.game.spawnParticle(e.mesh.position,15,0xffaa00); this.removeEnemy(e);
-            const p=this.game.entities.enemies.find(en=>en.body.id===e.parentId); if(p){p.partsCount--; if(p.partsCount<=0) { this.removeEnemy(p); this.game.gameState.req=0; }}
+            const p=this.game.entities.enemies.find(en=>en.body.id===e.parentId); if(p){p.partsCount--; if(p.partsCount<=0) { this.removeEnemy(p); this.game.gameState.req=0; this.completeWave(); }}
             return;
         }
 
@@ -250,10 +261,15 @@ export class StandardMode {
 
         this.removeEnemy(e);
         this.game.spawnParticle(e.mesh.position, 20, e.type==='fire'?0xff4400:0xffffff);
-        if(this.game.gameState.missionType==='hunt' && e.isTarget) { this.game.gameState.req=0; }
+        if(this.game.gameState.missionType==='hunt' && e.isTarget) {
+            this.game.gameState.req=0;
+            this.completeWave();
+        }
         else if(this.game.gameState.req>0 && !isEscape){
             this.game.gameState.req--;
-            if(this.game.gameState.req<=0) { this.game.showMsg(`WAVE ${this.game.gameState.wave} CLEAR`, "#fe0"); [...this.game.entities.enemies].forEach(en=>this.removeEnemy(en)); if(this.game.vip){this.game.world.removeBody(this.game.vip.body); this.game.scene.remove(this.game.vip.mesh); this.game.vip=null;} setTimeout(() => this.nextWave(), 2000); }
+            if(this.game.gameState.req<=0) {
+                this.completeWave();
+            }
         } else { this.spawnEnemy(); }
     }
 
@@ -333,8 +349,9 @@ export class StandardMode {
             } else {
                 // Reached Gate (End of waypoints)
                 if(this.game.gameState.missionType === 'escort' && this.game.gameState.req > 0) {
-                    this.game.gameState.req = 0; // Trigger win
+                    this.game.gameState.req = 0;
                     this.game.showMsg("VIP 登校完了!", "#0f0");
+                    this.completeWave(); // Trigger clear
                 }
             }
 
@@ -453,22 +470,39 @@ export class StandardMode {
             }
             if(pos.y < -10) this.killEnemy(e);
 
-            // Check Bounds (60x80 approx limits)
-            const limitX = 62; const limitZ = 82;
-            if(Math.abs(pos.x) > limitX || Math.abs(pos.z) > limitZ) {
+            // Check Bounds (Inside walls is ~ +/-60, +/-80)
+            const limitX = 60; const limitZ = 80;
+            const isOutX = Math.abs(pos.x) > limitX;
+            const isOutZ = Math.abs(pos.z) > limitZ;
+
+            if(isOutX || isOutZ) {
+                // Strong Return Logic
+                if (isOutX) {
+                    e.body.position.x = Math.sign(pos.x) * limitX;
+                    e.body.velocity.x *= -0.8; // Bounce back
+                }
+                if (isOutZ) {
+                    e.body.position.z = Math.sign(pos.z) * limitZ;
+                    e.body.velocity.z *= -0.8;
+                }
+
+                // Additional inward force
+                const toCenter = new CANNON.Vec3(-pos.x, 0, -pos.z);
+                toCenter.normalize();
+                e.body.applyForce(toCenter.scale(150), pos);
+
                 e.outsideTimer = (e.outsideTimer || 0) + dt;
                 if(e.outsideTimer > 10.0) {
                     this.game.spawnText("敵撤退", pos, "#aaa");
                     this.killEnemy(e, true);
                 } else {
-                    // Jump back to center
-                    if(e.body.velocity.y < 1.0 && pos.y < 5.0) {
-                        e.body.velocity.y = 20;
-                        const toCenter = new CANNON.Vec3(0, 0, 0).vsub(pos);
-                        toCenter.y = 0; toCenter.normalize();
-                        e.body.velocity.x = toCenter.x * 15;
-                        e.body.velocity.z = toCenter.z * 15;
+                    // Jump back to center if stuck for a short time
+                    if(e.body.velocity.y < 1.0 && pos.y < 5.0 && e.outsideTimer > 1.0) {
+                        e.body.velocity.y = 25;
+                        e.body.velocity.x = toCenter.x * 25;
+                        e.body.velocity.z = toCenter.z * 25;
                         this.game.spawnText("戻る!", pos, "#ff0");
+                        e.outsideTimer = 0;
                     }
                 }
             } else {
@@ -595,10 +629,16 @@ export class StandardMode {
         railL.position.set(slX-slW/2+0.1, slY+1, slZ); railL.quaternion.copy(slB.quaternion); scene.add(railL);
 
         const FW=CFG.field.width, FD=CFG.field.depth;
+        const gateW = 24; const gZ = FD/2;
+
+        // Side Walls
         createBox(-FW/2, 4, 0, 2, 8, FD, CFG.colors.wall); createBox(FW/2, 4, 0, 2, 8, FD, CFG.colors.wall);
-        createBox(0, 4, -FD/2, FW, 8, 2, CFG.colors.wall); createBox(0, 4, FD/2, FW, 8, 2, CFG.colors.wall);
-        const gZ = FD/2; const gateW = 24;
-        createBox(-gateW/2-1, 4, gZ, 2, 8, 2, CFG.colors.wall); createBox(gateW/2+1, 4, gZ, 2, 8, 2, CFG.colors.wall);
+        createBox(0, 4, -FD/2, FW, 8, 2, CFG.colors.wall); // Front wall
+
+        // Back Wall (Split for Gate)
+        const backWallW = (FW - gateW) / 2;
+        createBox(-FW/2 + backWallW/2, 4, gZ, backWallW, 8, 2, CFG.colors.wall);
+        createBox(FW/2 - backWallW/2, 4, gZ, backWallW, 8, 2, CFG.colors.wall);
 
         // Lattice Gate
         this.game.gatePos = new THREE.Vector3(0, 0, gZ);
@@ -606,14 +646,23 @@ export class StandardMode {
         gateGroup.position.set(0, 4, gZ);
         scene.add(gateGroup);
 
-        // Vertical bars
-        for(let x=-gateW/2; x<=gateW/2; x+=1.5) {
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 8, 0.3), new THREE.MeshStandardMaterial({color:0x333333}));
+        // Frame
+        const frameMat = new THREE.MeshStandardMaterial({color:0x222222});
+        const fL = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 1), frameMat); fL.position.set(-gateW/2, 0, 0); gateGroup.add(fL);
+        const fR = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 1), frameMat); fR.position.set(gateW/2, 0, 0); gateGroup.add(fR);
+        const fT = new THREE.Mesh(new THREE.BoxGeometry(gateW, 1, 1), frameMat); fT.position.set(0, 3.5, 0); gateGroup.add(fT);
+
+        // Dense Lattice
+        const barMat = new THREE.MeshStandardMaterial({color:0x444444});
+
+        // Vertical bars (Denser)
+        for(let x=-gateW/2+1; x<=gateW/2-1; x+=0.8) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 8, 0.15), barMat);
             bar.position.set(x, 0, 0); gateGroup.add(bar);
         }
-        // Horizontal bars
-        for(let y=-2; y<=2; y+=2) {
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(gateW, 0.3, 0.3), new THREE.MeshStandardMaterial({color:0x333333}));
+        // Horizontal bars (Denser)
+        for(let y=-3.5; y<=3.5; y+=1.0) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(gateW, 0.15, 0.15), barMat);
             bar.position.set(0, y, 0); gateGroup.add(bar);
         }
 
