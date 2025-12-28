@@ -45,11 +45,11 @@ export class StandardMode {
             this.game.els.missionText.textContent="決戦: 結界食い";
             this.game.gameState.req=1;
             this.spawnEnemy('boss_eater_core');
-            for(let i=0;i<5;i++) this.spawnEnemy('eater'); // Spawn Eater Minions
+            for(let i=0;i<10;i++) this.spawnEnemy('eater'); // Initial Spawn Eater Minions (More)
         }
 
         this.game.showMsg(`WAVE ${this.game.gameState.wave} START`, "#fff");
-        if(t!==4) for(let i=0;i<8;i++) this.spawnEnemy(); // Don't double spawn for boss
+        if(t!==4) for(let i=0;i<8;i++) this.spawnEnemy();
     }
 
     nextWave() {
@@ -140,32 +140,48 @@ export class StandardMode {
 
     spawnEnemy(forceType=null) {
         if (this.game.gameState.missionType === 'annihilation' && this.game.gameState.enemiesToSpawn <= 0) return;
-        if (this.game.gameState.missionType === 'boss_composite' || this.game.gameState.missionType === 'boss_eater') { if(this.game.entities.enemies.filter(e=>!e.isBoss).length >= 5) return; }
 
-        // Balance Adjustment: Increase cap for later waves
-        const cap = 15 + Math.floor(this.game.gameState.wave / 2);
+        // Cap Check
+        let cap = 15 + Math.floor(this.game.gameState.wave / 2);
+        if (this.game.gameState.missionType === 'boss_composite') cap = 5;
+        if (this.game.gameState.missionType === 'boss_eater') cap = 20; // Allow large numbers for boss fight
+
+        if (this.game.gameState.missionType === 'boss_composite' && this.game.entities.enemies.filter(e=>!e.isBoss).length >= 5) return;
+        if (this.game.entities.enemies.length >= cap) return;
         if (this.game.entities.enemies.length >= cap) return;
 
         const fW=this.config.field.width, fD=this.config.field.depth;
         let type = 'normal';
         if(forceType) type = forceType;
+        else if (this.game.gameState.missionType === 'boss_eater') type = 'eater'; // Ensure only eaters spawn in boss fight if not forced
         else if (this.game.gameState.wave % 5 === 1) type = (Math.random() < 0.6) ? 'fire' : 'phantom';
         else if (this.game.gameState.wave % 5 === 2) type = 'normal';
-        else if (this.game.gameState.wave % 5 === 3) type = (Math.random() < 0.3) ? 'puzzle' : 'normal'; // Wave 3: Puzzle chance
+        else if (this.game.gameState.wave % 5 === 3) type = (Math.random() < 0.3) ? 'puzzle' : 'normal';
         else if (this.game.gameState.wave % 5 === 4) type = 'target';
         else type = (Math.random() < 0.3) ? 'fire' : ((Math.random() < 0.3) ? 'phantom' : (Math.random() < 0.3 ? 'cube' : (Math.random() < 0.5 ? 'roller' : 'jumper')));
 
         if (type === 'puzzle') { this.spawnPuzzleGroup(); return; }
 
         let x,y,z;
-        if (type === 'fire' || type === 'phantom' || type === 'cube') { x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=15 + Math.random()*10; }
+        if (type === 'boss_eater_core') {
+            // Core Logic: High altitude, random X/Z
+            x = (Math.random()-.5) * (fW - 20);
+            z = (Math.random()-.5) * (fD - 20);
+            y = 40 + Math.random() * 40; // High (40-80)
+            this.game.showMsg("結界食い(核) 出現！ 上空を捜索せよ！", "#f0f");
+        } else if (type === 'fire' || type === 'phantom' || type === 'cube' || type === 'eater') {
+            x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=20 + Math.random()*20; // Spawn high
+        }
         else { x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=10; }
 
         const hpMult = 1 + (this.game.gameState.wave-1)*0.2;
         let sz = 0.8; let col = new THREE.Color(0xaa2222);
         let geo;
 
-        if(type==='phantom') { sz=1.0; col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
+        if (type === 'boss_eater_core') {
+            sz = 2.5; col.setHex(0xFF0055); geo = new THREE.IcosahedronGeometry(sz, 2);
+        }
+        else if(type==='phantom') { sz=1.0; col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
         else if(type==='fire') { col.setHex(this.config.colors.fire_ene); geo=new THREE.IcosahedronGeometry(sz,1); }
         else if(type==='target') { col.setHex(this.config.colors.target); geo=new THREE.IcosahedronGeometry(sz,1); }
         else if(type==='eater') { sz=0.9; col.setHex(0xaa2222); geo=new THREE.OctahedronGeometry(sz,0); }
@@ -176,11 +192,15 @@ export class StandardMode {
 
         // Mask 1(Player)|2(Kekkai)|4(Enemy). Fire ignores Kekkai(2) initially -> Mask 1|4 = 5
         const mask = (type === 'fire') ? 1|4 : 1|2|4;
-        const b=new CANNON.Body({mass:15, shape:(type==='cube'?new CANNON.Box(new CANNON.Vec3(sz/2,sz/2,sz/2)):new CANNON.Sphere(sz)), material:this.game.materials.ene, linearDamping:0.4, collisionFilterGroup:4, collisionFilterMask:mask});
-        b.position.set(x,y,z); this.game.world.addBody(b);
+        const mass = (type === 'boss_eater_core') ? 500 : 15;
+        const b=new CANNON.Body({mass:mass, shape:(type==='cube'?new CANNON.Box(new CANNON.Vec3(sz/2,sz/2,sz/2)):new CANNON.Sphere(sz)), material:this.game.materials.ene, linearDamping:0.4, collisionFilterGroup:4, collisionFilterMask:mask});
+        b.position.set(x,y,z);
+        if(type === 'boss_eater_core') b.linearDamping = 0.9;
+        this.game.world.addBody(b);
 
         let mat;
-        if (type === 'phantom') { mat = new THREE.MeshStandardMaterial({color: 0xffffff, transparent: true, opacity: 0.05, roughness: 0.0}); }
+        if (type === 'boss_eater_core') { mat = new THREE.MeshStandardMaterial({color: 0xFF0055, emissive: 0x550022, roughness: 0.2}); }
+        else if (type === 'phantom') { mat = new THREE.MeshStandardMaterial({color: 0xffffff, transparent: true, opacity: 0.05, roughness: 0.0}); }
         else if (type === 'fire') { mat = new THREE.MeshStandardMaterial({color: col, emissive: 0xffaa00, emissiveIntensity: 1.0}); }
         else { mat = new THREE.MeshStandardMaterial({color: col}); }
         const m=new THREE.Mesh(geo, mat);
@@ -191,8 +211,18 @@ export class StandardMode {
             m.add(new THREE.Points(pGeo, new THREE.PointsMaterial({color:0xffaa00, size:0.3, transparent:true, opacity:0.8})));
         }
         this.game.scene.add(m);
-        const hpVal = (type==='fire'?5:3)*hpMult;
-        this.game.entities.enemies.push({body:b, mesh:m, type, hp: hpVal, hpMax: hpVal, state:'normal', wetTimer:0, isTarget:(type==='target')});
+
+        let hpVal = (type==='fire'?5:3)*hpMult;
+        if(type === 'boss_eater_core') hpVal = 50 * hpMult;
+
+        const isBoss = (type === 'boss_eater_core');
+        this.game.entities.enemies.push({
+            body:b, mesh:m, type, hp: hpVal, hpMax: hpVal,
+            state:'normal', wetTimer:0,
+            isTarget:(type==='target'),
+            isBoss: isBoss,
+            floatOffset: Math.random()*100
+        });
         if (this.game.gameState.missionType==='annihilation') this.game.gameState.enemiesToSpawn--;
     }
 
