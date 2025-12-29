@@ -537,7 +537,11 @@ export class StandardMode {
             if(vip.hp <= 0) { this.game.showMsg("護衛対象死亡... GAME OVER", "#f00"); setTimeout(()=>{location.reload()}, 3000); }
         }
 
-        this.game.entities.enemies.forEach(e => {
+        // Backward loop to safe-guard against array modification (removal) during iteration
+        for (let i = this.game.entities.enemies.length - 1; i >= 0; i--) {
+            const e = this.game.entities.enemies[i];
+            if (!e || !e.body) continue;
+
             const pos = e.body.position;
             const pPos = playerBody.position;
             const targetPos = (vip && Math.random()<0.7) ? vip.body.position : pPos;
@@ -738,8 +742,11 @@ export class StandardMode {
                  e.body.applyForce(new CANNON.Vec3(0, 50 * e.body.mass, 0), pos);
             }
 
-            e.mesh.position.copy(pos); e.mesh.quaternion.copy(e.body.quaternion);
-        });
+            if (e.mesh) {
+                e.mesh.position.copy(pos);
+                e.mesh.quaternion.copy(e.body.quaternion);
+            }
+        }
     }
 
     performMetsu(t) {

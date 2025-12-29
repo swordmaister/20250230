@@ -184,64 +184,86 @@ export class Game {
     }
 
     loop(t) {
-        const dt = Math.min(this.clock.getDelta(), 0.1);
-        this.world.step(1/60, dt, 3);
+        try {
+            const dt = Math.min(this.clock.getDelta(), 0.1);
+            this.world.step(1/60, dt, 3);
 
-        this.mode.update(dt, t);
-        this.player.update(dt);
-        this.updateVRHud();
+            this.mode.update(dt, t);
 
-        // Entity updates
-        this.entities.waterSplashes = this.entities.waterSplashes.filter(s => { s.timer -= dt; return s.timer > 0; });
-
-        // Spec 2: Target Marker (Target Tracking)
-        if(this.targetArrow) {
-            const target = this.entities.enemies.find(e => e.isTarget || e.isBoss);
-            if(target) {
-                this.targetArrow.visible = true;
-                this.targetArrow.position.copy(target.mesh.position).add(new THREE.Vector3(0, 4, 0));
-                this.targetArrow.rotation.y += dt * 3;
-                // Add pillar effect if not present
-                if(!target.markerPillar) {
-                    const geo = new THREE.CylinderGeometry(2.0, 2.0, 500, 16);
-                    const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.3, depthTest: false});
-                    target.markerPillar = new THREE.Mesh(geo, mat);
-                    target.markerPillar.position.y = 250;
-                    target.mesh.add(target.markerPillar);
-                }
-            } else {
-                this.targetArrow.visible = false;
+            // Failsafe: Check Player Position NaN
+            if (this.player && this.player.body && isNaN(this.player.body.position.x)) {
+                 console.error("Player NaN position detected! Resetting.");
+                 this.player.body.position.set(0, 10, 0);
+                 this.player.body.velocity.set(0, 0, 0);
             }
-        }
 
-        this.entities.kekkai.forEach(k=>{
-            if(!k.shrinking)return;
-            k.mesh.scale.multiplyScalar(0.7);
-            const kb=new THREE.Box3().setFromObject(k.mesh);
-            this.entities.enemies.forEach(e=>{
-                if(kb.intersectsBox(new THREE.Box3().setFromObject(e.mesh))) {
-                    if(k.isWaterCube && e.type === 'fire' && e.state !== 'wet') {
-                        e.state = 'wet'; e.wetTimer = 10.0; this.spawnText("接触鎮火!", e.mesh.position, "#0af");
-                        e.body.velocity.set(0,0,0);
+            this.player.update(dt);
+            this.updateVRHud();
+
+            // Entity updates
+            this.entities.waterSplashes = this.entities.waterSplashes.filter(s => { s.timer -= dt; return s.timer > 0; });
+
+            // Spec 2: Target Marker (Target Tracking)
+            if(this.targetArrow) {
+                const target = this.entities.enemies.find(e => e.isTarget || e.isBoss);
+                if(target) {
+                    this.targetArrow.visible = true;
+                    if(target.mesh) this.targetArrow.position.copy(target.mesh.position).add(new THREE.Vector3(0, 4, 0));
+                    this.targetArrow.rotation.y += dt * 3;
+                    // Add pillar effect if not present
+                    if(!target.markerPillar && target.mesh) {
+                        const geo = new THREE.CylinderGeometry(2.0, 2.0, 500, 16);
+                        const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.3, depthTest: false});
+                        target.markerPillar = new THREE.Mesh(geo, mat);
+                        target.markerPillar.position.y = 250;
+                        target.mesh.add(target.markerPillar);
                     }
-                    if (e.type === 'fire' && e.state !== 'wet') { this.spawnText("無効!", e.mesh.position, "#f00"); k.shrinking = false; this.mode.removeKekkai(k); }
-                    else this.mode.onMetsuHit(e);
+                } else {
+                    this.targetArrow.visible = false;
                 }
-                if (this.waterTank.mesh && kb.intersectsBox(new THREE.Box3().setFromObject(this.waterTank.mesh))) { this.waterTank.hp -= 50; }
-            });
-            if(k.mesh.scale.x<0.05) this.mode.removeKekkai(k);
-        });
-
-        this.entities.items.forEach(it => {
-            it.mesh.position.copy(it.body.position); it.mesh.rotation.y += 0.05;
-            if(this.player.body.position.distanceTo(it.body.position) < 2) {
-                this.player.heal(20);
-                this.safeRemoveMesh(it.mesh); this.world.removeBody(it.body);
-                this.entities.items = this.entities.items.filter(i => i !== it);
             }
-        });
 
-        this.renderer.render(this.scene, this.camera);
+            // Kekkai Collision Logic: Use copies to safely iterate
+            const kekkaiList = [...this.entities.kekkai];
+            const enemyList = [...this.entities.enemies];
+
+            kekkaiList.forEach(k=>{
+                if(!k.shrinking || !k.mesh) return;
+                k.mesh.scale.multiplyScalar(0.7);
+                const kb=new THREE.Box3().setFromObject(k.mesh);
+
+                enemyList.forEach(e=>{
+                    if (!e.mesh) return;
+                    // Re-check existence in main list to avoid hitting dead enemies twice
+                    if (!this.entities.enemies.includes(e)) return;
+
+                    if(kb.intersectsBox(new THREE.Box3().setFromObject(e.mesh))) {
+                        if(k.isWaterCube && e.type === 'fire' && e.state !== 'wet') {
+                            e.state = 'wet'; e.wetTimer = 10.0; this.spawnText("接触鎮火!", e.mesh.position, "#0af");
+                            e.body.velocity.set(0,0,0);
+                        }
+                        if (e.type === 'fire' && e.state !== 'wet') { this.spawnText("無効!", e.mesh.position, "#f00"); k.shrinking = false; this.mode.removeKekkai(k); }
+                        else this.mode.onMetsuHit(e);
+                    }
+                    if (this.waterTank.mesh && kb.intersectsBox(new THREE.Box3().setFromObject(this.waterTank.mesh))) { this.waterTank.hp -= 50; }
+                });
+
+                if(k.mesh.scale.x<0.05) this.mode.removeKekkai(k);
+            });
+
+            this.entities.items.forEach(it => {
+                it.mesh.position.copy(it.body.position); it.mesh.rotation.y += 0.05;
+                if(this.player.body.position.distanceTo(it.body.position) < 2) {
+                    this.player.heal(20);
+                    this.safeRemoveMesh(it.mesh); this.world.removeBody(it.body);
+                    this.entities.items = this.entities.items.filter(i => i !== it);
+                }
+            });
+
+            this.renderer.render(this.scene, this.camera);
+        } catch (e) {
+            console.error("Game Loop Error:", e);
+        }
     }
 
     onResize() {
