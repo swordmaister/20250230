@@ -189,6 +189,10 @@ export class StandardMode {
         coreRef.puzzleOrder = order;
         coreRef.currentStep = 0;
         coreRef.lastKillTime = 0; // For simultaneous check
+
+        // Initial Color Indication (Target Color)
+        coreRef.mesh.material.color.setHex(colors[order[0]]);
+
         this.game.spawnText("PUZZLE BOSS: 順序ヲ守レ", new THREE.Vector3(cx, cy+8, cz), "#ff0");
     }
 
@@ -374,6 +378,10 @@ export class StandardMode {
                         core.isInvincible = false;
                         core.mesh.material.color.setHex(0xff0000); // Vulnerable
                         this.game.spawnText("防御解除!", core.mesh.position, "#f00");
+                    } else {
+                        // Update Core Color to Next Target
+                        const nextColor = [0xff0000, 0x00ff00, 0x0000ff][core.puzzleOrder[core.currentStep]];
+                        core.mesh.material.color.setHex(nextColor);
                     }
                 } else {
                     // Wrong Order
@@ -427,6 +435,10 @@ export class StandardMode {
         const cy = 20;
 
         const colors = [0xff0000, 0x00ff00, 0x0000ff];
+
+        // Reset Core Color
+        core.mesh.material.color.setHex(colors[core.puzzleOrder[0]]);
+
         colors.forEach((c, i) => {
             const angle = (i / 3) * Math.PI * 2;
             const mx = cx + Math.cos(angle) * 12;
@@ -651,7 +663,7 @@ export class StandardMode {
                 e.body.applyForce(new CANNON.Vec3(forceX, forceY, forceZ), pos);
                 e.body.angularVelocity.set(0, 0.5, 0);
             }
-            else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus'].includes(e.type)) {
+            else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus', 'puzzle_minion'].includes(e.type)) {
                 // Spec 8: Patrol or Chase
                 let dir = new CANNON.Vec3();
 
