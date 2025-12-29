@@ -33,32 +33,89 @@ export class StandardMode {
         }
     }
 
+    cleanupWave() {
+        // Clear all enemies, bullets, items
+        [...this.game.entities.enemies].forEach(e => this.removeEnemy(e));
+        [...this.game.entities.items].forEach(i => {
+            this.game.safeRemoveMesh(i.mesh);
+            this.game.world.removeBody(i.body);
+        });
+        this.game.entities.items = [];
+        // VIP cleanup if exists
+        if(this.game.vip) {
+            this.game.world.removeBody(this.game.vip.body);
+            this.game.scene.remove(this.game.vip.mesh);
+            this.game.vip = null;
+        }
+        // Reset timers
+        this.game.gameState.nextSpawn = 0;
+    }
+
     startWave() {
+        this.cleanupWave();
         this.game.gameState.enemiesToSpawn = 0;
-        const t = (this.game.gameState.wave - 1) % 5;
-        if(t===0){this.game.gameState.missionType='normal'; this.game.els.missionText.textContent="通常任務: 敵部隊排除"; this.game.gameState.req=5; }
-        else if(t===1){this.game.gameState.missionType='escort'; this.game.els.missionText.textContent="護衛任務: VIPを校門へ"; this.game.gameState.req=10; this.spawnVIP(); }
-        else if(t===2){this.game.gameState.missionType='boss_composite'; this.game.els.missionText.textContent="解体任務: 大型構造物"; this.game.gameState.req=1; this.spawnCompositeBoss(); }
-        else if(t===3){this.game.gameState.missionType='hunt'; this.game.els.missionText.textContent="討伐任務: 黄金標的"; this.game.gameState.req=1; this.spawnEnemy('target'); }
-        else if(t===4){
-            this.game.gameState.missionType='boss_eater';
-            this.game.els.missionText.textContent="決戦: 結界食い";
-            this.game.gameState.req=1;
-            this.spawnEnemy('boss_eater_core');
-            for(let i=0;i<10;i++) this.spawnEnemy('eater'); // Initial Spawn Eater Minions (More)
+
+        const w = this.game.gameState.wave;
+
+        // Spec 2: Wave 1-6 Sequence
+        switch(w) {
+            case 1: // Annihilation
+                this.game.gameState.missionType='normal';
+                this.game.els.missionText.textContent="WAVE 1: 殲滅任務";
+                this.game.gameState.req=5;
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 2: // Escort
+                this.game.gameState.missionType='escort';
+                this.game.els.missionText.textContent="WAVE 2: VIP護衛";
+                this.game.gameState.req=1; // Reach gate to win
+                this.spawnVIP();
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 3: // Cleanup (Falling Giants)
+                this.game.gameState.missionType='boss_composite';
+                this.game.els.missionText.textContent="WAVE 3: 大型残骸処理";
+                this.game.gameState.req=1;
+                this.spawnCompositeBoss();
+                // Spawn composite parts high up? spawnCompositeBoss handles position.
+                // We add some interference enemies
+                for(let i=0; i<3; i++) this.spawnEnemy();
+                break;
+            case 4: // Puzzle
+                this.game.gameState.missionType='normal'; // Treat as normal clearing but with puzzle logic
+                this.game.els.missionText.textContent="WAVE 4: パズル部隊";
+                this.game.gameState.req=1; // 1 Core group
+                this.spawnPuzzleGroup();
+                for(let i=0; i<3; i++) this.spawnEnemy();
+                break;
+            case 5: // Chase
+                this.game.gameState.missionType='hunt';
+                this.game.els.missionText.textContent="WAVE 5: ターゲット追跡";
+                this.game.gameState.req=1;
+                this.spawnEnemy('target');
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 6: // Eater Boss
+                this.game.gameState.missionType='boss_eater';
+                this.game.els.missionText.textContent="WAVE 6: 決戦 結界食い";
+                this.game.gameState.req=1;
+                this.spawnEnemy('boss_eater_core');
+                for(let i=0; i<10; i++) this.spawnEnemy('eater');
+                break;
+            default: // Loop or End
+                if (w > 6) {
+                    this.game.showResult();
+                    return;
+                }
+                break;
         }
 
-        this.game.showMsg(`WAVE ${this.game.gameState.wave} START`, "#fff");
-        if(t!==4) for(let i=0;i<8;i++) this.spawnEnemy();
+        this.game.showMsg(`WAVE ${w} START`, "#fff");
     }
 
     nextWave() {
         this.game.gameState.wave++;
-        if (this.game.gameState.wave > 20) {
-            this.game.showResult();
-        } else {
-            this.startWave();
-        }
+        this.startWave();
     }
 
     spawnVIP() {
@@ -153,42 +210,53 @@ export class StandardMode {
         const fW=this.config.field.width, fD=this.config.field.depth;
         let type = 'normal';
         if(forceType) type = forceType;
-        else if (this.game.gameState.missionType === 'boss_eater') type = 'eater'; // Ensure only eaters spawn in boss fight if not forced
-        else if (this.game.gameState.wave % 5 === 1) type = (Math.random() < 0.6) ? 'fire' : 'phantom';
-        else if (this.game.gameState.wave % 5 === 2) type = 'normal';
-        else if (this.game.gameState.wave % 5 === 3) type = (Math.random() < 0.3) ? 'puzzle' : 'normal';
-        else if (this.game.gameState.wave % 5 === 4) type = 'target';
-        else type = (Math.random() < 0.3) ? 'fire' : ((Math.random() < 0.3) ? 'phantom' : (Math.random() < 0.3 ? 'cube' : (Math.random() < 0.5 ? 'roller' : 'jumper')));
+        else if (this.game.gameState.missionType === 'boss_eater') type = 'eater';
+        else if (this.game.gameState.wave === 3) type = 'normal'; // Cleanup wave interference
+        else {
+            // Spec 3: Random Shape/Behavior
+            const rand = Math.random();
+            if (rand < 0.2) type = 'fire';
+            else if (rand < 0.4) type = 'phantom';
+            else if (rand < 0.5) type = 'cube';
+            else if (rand < 0.6) type = 'roller';
+            else if (rand < 0.7) type = 'jumper';
+            else if (rand < 0.8) type = 'cone'; // New shape
+            else if (rand < 0.9) type = 'torus'; // New shape
+            else type = 'normal';
+        }
 
         if (type === 'puzzle') { this.spawnPuzzleGroup(); return; }
 
         let x,y,z;
         if (type === 'boss_eater_core') {
-            // Core Logic: High altitude, random X/Z (Spec C-Special 1 Core: High altitude circling)
-            x = (Math.random()-.5) * (fW - 20);
-            z = (Math.random()-.5) * (fD - 20);
-            y = 40 + Math.random() * 40; // High (40-80)
+            x = (Math.random()-.5) * (fW - 20); z = (Math.random()-.5) * (fD - 20); y = 40 + Math.random() * 40;
             this.game.showMsg("結界食い(核) 出現！ 上空を捜索せよ！", "#f0f");
-        } else if (type === 'fire' || type === 'phantom' || type === 'cube' || type === 'eater') {
-            x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=20 + Math.random()*20; // Spawn high
+        } else {
+            // Random spawn pos
+            x = (Math.random()-.5)*fW; z = (Math.random()-.5)*fD; y = 10 + Math.random()*20;
         }
-        else { x=(Math.random()-.5)*fW; z=(Math.random()-.5)*fD; y=10; }
 
         const hpMult = 1 + (this.game.gameState.wave-1)*0.2;
-        let sz = 0.8; let col = new THREE.Color(0xaa2222);
+        let sz = 0.8 + Math.random()*0.5; // Spec 3: Size Variation
+        let col = new THREE.Color().setHSL(Math.random(), 0.7, 0.5); // Spec 3: Random Color
         let geo;
 
-        if (type === 'boss_eater_core') {
-            sz = 2.5; col.setHex(0xFF0055); geo = new THREE.IcosahedronGeometry(sz, 2);
-        }
-        else if(type==='phantom') { sz=1.0; col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
-        else if(type==='fire') { col.setHex(this.config.colors.fire_ene); geo=new THREE.IcosahedronGeometry(sz,1); }
+        // Specific overrides
+        if(type==='boss_eater_core') { sz = 2.5; col.setHex(0xFF0055); geo = new THREE.IcosahedronGeometry(sz, 2); }
         else if(type==='target') { col.setHex(this.config.colors.target); geo=new THREE.IcosahedronGeometry(sz,1); }
-        else if(type==='eater') { sz=0.9; col.setHex(0xaa2222); geo=new THREE.OctahedronGeometry(sz,0); }
-        else if(type==='cube') { sz=1.2; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.BoxGeometry(sz,sz,sz); }
-        else if(type==='roller') { sz=1.0; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.TetrahedronGeometry(sz); }
-        else if(type==='jumper') { sz=1.0; col.setHSL(Math.random(), 1, 0.5); geo=new THREE.TorusGeometry(sz*0.6, sz*0.2, 8, 16); }
-        else { geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='fire') { col.setHex(this.config.colors.fire_ene); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='phantom') { col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='eater') { col.setHex(0xaa2222); geo=new THREE.OctahedronGeometry(sz,0); }
+
+        // Random Geometries for others (Spec 3)
+        else {
+            if (type==='cube') geo = new THREE.BoxGeometry(sz,sz,sz);
+            else if (type==='roller') geo = new THREE.TetrahedronGeometry(sz);
+            else if (type==='jumper') geo = new THREE.TorusGeometry(sz*0.6, sz*0.2, 8, 16);
+            else if (type==='cone') geo = new THREE.ConeGeometry(sz*0.6, sz*1.5, 8);
+            else if (type==='torus') geo = new THREE.TorusKnotGeometry(sz*0.4, sz*0.1, 64, 8); // More complex shape
+            else geo = new THREE.IcosahedronGeometry(sz,0);
+        }
 
         // Mask 1(Player)|2(Kekkai)|4(Enemy). Fire ignores Kekkai(2) initially -> Mask 1|4 = 5
         const mask = (type === 'fire') ? 1|4 : 1|2|4;
@@ -291,6 +359,12 @@ export class StandardMode {
 
         this.removeEnemy(e);
         this.game.spawnParticle(e.mesh.position, 20, e.type==='fire'?0xff4400:0xffffff);
+
+        // Spec 1: Item Drop (30%)
+        if (Math.random() < 0.3) {
+            this.spawnItem(e.mesh.position);
+        }
+
         if(this.game.gameState.missionType==='hunt' && e.isTarget) {
             this.game.gameState.req=0;
             this.completeWave();
@@ -308,6 +382,18 @@ export class StandardMode {
         this.game.entities.enemies = this.game.entities.enemies.filter(o=>o!==e);
         this.game.safeRemoveMesh(e.mesh);
         this.game.world.removeBody(e.body);
+    }
+
+    spawnItem(pos) {
+        // Spec 1: HP Recovery Item
+        const item_b = new CANNON.Body({mass:1, shape:new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)), material:this.game.materials.def});
+        item_b.position.copy(pos);
+        this.game.world.addBody(item_b);
+        const item_m = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial({color:0x00ff00, wireframe:true}));
+        item_m.position.copy(pos);
+        this.game.scene.add(item_m);
+        this.game.entities.items.push({body:item_b, mesh:item_m});
+        this.game.spawnText("ITEM!", pos, "#0f0");
     }
 
     removeKekkai(k) {
@@ -498,14 +584,24 @@ export class StandardMode {
                 e.body.applyForce(new CANNON.Vec3(forceX, forceY, forceZ), pos);
                 e.body.angularVelocity.set(0, 0.5, 0);
             }
-            else if(e.type === 'cube' || e.type === 'roller' || e.type === 'jumper' || e.type === 'normal') {
+            else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus'].includes(e.type)) {
+                // Spec 3: Aggressive Tracking
                 const dir = new CANNON.Vec3().copy(targetPos).vsub(pos); dir.normalize();
-                if(e.type === 'cube') { e.body.angularVelocity.set(0,10,0); e.body.applyForce(dir.scale(20), pos); }
-                else if(e.type === 'roller') { e.body.torque.set(dir.z*20, 0, -dir.x*20); }
-                else if(e.type === 'jumper') {
-                    if(pos.y < 1 && Math.random()<0.05) e.body.velocity.y=15;
-                    e.body.applyForce(dir.scale(15), pos);
-                } else { e.body.applyForce(dir.scale(20), pos); }
+
+                // Spec 3: Dive Bomb
+                if (pos.y > 15 && distToT < 30 && Math.random() < 0.05) {
+                    const dive = new CANNON.Vec3().copy(targetPos).vsub(pos).normalize();
+                    e.body.velocity.set(dive.x*50, dive.y*50, dive.z*50);
+                    this.game.spawnText("DIVE!", pos, "#f00");
+                } else {
+                    if(e.type === 'cube') { e.body.angularVelocity.set(0,10,0); e.body.applyForce(dir.scale(20), pos); }
+                    else if(e.type === 'roller') { e.body.torque.set(dir.z*20, 0, -dir.x*20); }
+                    else if(e.type === 'jumper') {
+                        if(pos.y < 1 && Math.random()<0.05) e.body.velocity.y=15;
+                        e.body.applyForce(dir.scale(15), pos);
+                    }
+                    else { e.body.applyForce(dir.scale(20), pos); } // Cone, Torus, Normal
+                }
 
                 if (distToT < 1.5) {
                     if(vip && distToT === pos.distanceTo(vip.body.position)) { vip.hp--; this.game.spawnText("VIP Damage!", new THREE.Vector3(vip.body.position.x, vip.body.position.y+2, vip.body.position.z), "#f00"); }
