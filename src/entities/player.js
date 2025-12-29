@@ -515,13 +515,16 @@ export class Player {
         this.hp = Math.max(0, this.hp - amount);
         this.game.stats.damageTaken += amount;
         this.damageCooldown = 1.0;
-        this.game.els.dmgOverlay.style.opacity = 0.5;
-        setTimeout(() => this.game.els.dmgOverlay.style.opacity = 0, 150);
-        if(this.hp <= 0) {
-            this.game.showMsg("GAME OVER", "#f00");
-            this.game.gameState.isGameOver = true;
-            // Maybe show result screen with "Failed" state or just reload
-            setTimeout(()=>location.reload(), 3000);
+
+        // Spec 1: Immortal Warning System
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.game.showMsg("WARNING!!", "#f00");
+            this.game.els.dmgOverlay.style.opacity = 0.8; // Stickier overlay
+            // No Game Over Trigger
+        } else {
+            this.game.els.dmgOverlay.style.opacity = 0.5;
+            setTimeout(() => this.game.els.dmgOverlay.style.opacity = 0, 150);
         }
     }
 
