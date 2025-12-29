@@ -1,102 +1,477 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<title>True Kekkai VR - Mode Select</title>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#222">
-<style>
-  html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
-  canvas { display: block; width: 100%; height: 100%; outline: none; }
-  #error-log { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); color:#ff5555; padding:20px; z-index:9999; white-space:pre-wrap; font-weight:bold; overflow:auto; }
-  #damage-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 60%, red 100%); opacity: 0; pointer-events: none; z-index: 50; transition: opacity 0.1s; }
-  #jamming-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, rgba(255,0,255,0.2) 0px, rgba(255,0,255,0.2) 2px, transparent 2px, transparent 4px); opacity: 0; pointer-events: none; z-index: 55; mix-blend-mode: screen; transition: opacity 0.2s; }
-  .novr-only { transition: opacity 0.5s; }
-  #hud { position: fixed; top: 16px; left: 16px; pointer-events: none; z-index: 10; }
-  @supports (padding-top: env(safe-area-inset-top)) { #hud { top: calc(env(safe-area-inset-top) + 10px); left: calc(env(safe-area-inset-left) + 16px); } }
-  .hud-box { background: rgba(0, 30, 60, 0.6); padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.4); margin-bottom: 8px; backdrop-filter: blur(4px); min-width: 140px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-  .big-text { font-size: 18px; font-weight: bold; color: #ffeb3b; text-shadow: 1px 1px 2px #000; }
-  .boss-text { font-size: 20px; font-weight: 900; color: #ff0055; text-shadow: 0 0 5px #f00, 2px 2px 0 #000; animation: pulse 1s infinite alternate; }
-  @keyframes pulse { from { opacity: 0.8; transform: scale(1); } to { opacity: 1; transform: scale(1.05); } }
-  .sub-text { font-size: 14px; color: #fff; text-shadow: 1px 1px 1px #000; }
-  .bar-bg { width: 100%; height: 8px; background: #555; margin-top: 4px; border-radius: 4px; overflow: hidden; }
-  .hp-val { width: 100%; height: 100%; background: #0f0; transition: width 0.2s; }
-  .sp-val { width: 100%; height: 100%; background: #00bfff; transition: width 0.1s; }
-  #msgArea { position: fixed; top: 35%; left: 0; width: 100%; text-align: center; pointer-events: none; z-index: 20; }
-  .flash-msg { font-size: 60px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #000, 2px 2px 0 #000; opacity: 0; transition: opacity 0.1s; white-space: pre-wrap; transform: scale(0.8); }
-  #uiLayer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
-  #stickZone { position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px; pointer-events: auto; margin-bottom: env(safe-area-inset-bottom); margin-left: env(safe-area-inset-left); }
-  #padArea { position: absolute; bottom: 30px; right: 30px; width: 180px; height: 180px; pointer-events: none; margin-bottom: env(safe-area-inset-bottom); margin-right: env(safe-area-inset-right); }
-  .stick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; position: relative; }
-  .stick-knob { width: 60px; height: 60px; background: #fff; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 4px 10px rgba(0,0,0,0.3); pointer-events: none; }
-  #stickJumpBtn { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; background: rgba(255,0,0,0.5); border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: auto; }
-  .btn { position: absolute; width: 65px; height: 65px; z-index: 10; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); background: rgba(40,50,80,0.8); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; pointer-events: auto; touch-action: manipulation; transition: transform 0.1s; }
-  .btn:active { transform: scale(0.9); background: rgba(60,70,100,0.9); }
-  .btn.disabled { filter: grayscale(100%); opacity: 0.5; pointer-events: none; }
-  #btnUp { top: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #607d8b, #455a64); }
-  #btnDown { bottom: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #9c27b0, #7b1fa2); width: 75px; height: 75px; font-size: 16px; }
-  #btnLeft { top: 50%; left: 0; transform: translateY(-50%); background: linear-gradient(135deg, #f44336, #c62828); }
-  #btnRight { top: 50%; right: 0; transform: translateY(-50%); background: linear-gradient(135deg, #03a9f4, #0288d1); width: 75px; height: 75px; font-size: 18px; }
-  #btnRight.drawing { background: #fff; color: #0288d1; transform: translateY(-50%) scale(1.1); }
-  #modeSwitch { position: absolute; top: -60px; right: 0; width: 140px; height: 40px; background: rgba(0,0,0,0.6); border: 2px solid #fff; border-radius: 20px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; pointer-events:auto; }
-  #modeSwitch.phys { background: linear-gradient(90deg, #FFD700, #FF8C00); color:#000; border-color:#fff; }
-  #modeSwitch.ghost { background: linear-gradient(90deg, #00bfff, #0000ff); color:#fff; border-color:#00ffff; }
-  #centerReticle { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 1px solid rgba(0,0,0,0.5); z-index: 500; }
-  #vrBtn { position: fixed; top: 10px; right: 10px; padding: 12px 24px; background: rgba(0,0,0,0.8); border: 2px solid #0f0; color: #0f0; border-radius: 8px; z-index: 200; pointer-events: auto; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 0 10px #0f0; }
-  #result-screen { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; }
-</style>
-<script>
-  window.onerror = function(msg, url, line) {
-    const box = document.getElementById('error-log'); box.style.display = 'block';
-    box.textContent += "Error: " + msg + "\nLine: " + line + "\n"; return false;
-  };
-</script>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Style Pricer V3 - 超富裕層対応版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; }
+        .card-selected {
+            border: 2px solid #f59e0b !important;
+            background-color: #fffbeb !important; /* amber-50 */
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2);
+        }
+        /* サバイバル系の色は青白く */
+        .card-selected[data-rank="0"], .card-selected[data-rank="1"] {
+            border-color: #94a3b8 !important;
+            background-color: #f1f5f9 !important;
+            box-shadow: none;
+        }
+        /* 通常ランク */
+        .card-selected[data-rank="2"], .card-selected[data-rank="3"] {
+            border-color: #0ea5e9 !important;
+            background-color: #f0f9ff !important;
+            box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.3);
+        }
+
+        .card-option { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .card-option:hover { transform: translateY(-2px); z-index: 10; }
+
+        .detail-box { display: none; }
+        .detail-box.show { display: block; animation: slideDown 0.3s ease-out; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); max-height: 0; }
+            to { opacity: 1; transform: translateY(0); max-height: 300px; }
+        }
+        .pb-safe { padding-bottom: 220px; }
+    </style>
 </head>
-<body>
-<div id="error-log"></div><div id="damage-overlay"></div><div id="jamming-overlay"></div>
+<body class="bg-slate-50 text-slate-800">
 
-<div id="result-screen">
-  <h1 style="color:#fe0; font-size:48px; margin-bottom:20px;">MISSION COMPLETE</h1>
-  <div id="result-stats" style="font-size:18px; line-height:1.6; background:rgba(0,30,60,0.8); padding:30px; border-radius:12px; border:2px solid #fff; min-width:300px;"></div>
-  <button onclick="location.reload()" style="margin-top:30px; padding:15px 40px; font-size:24px; font-weight:bold; cursor:pointer; background:#0f0; border:none; border-radius:8px;">RETURN</button>
-</div>
+    <header class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-2xl">
+        <div class="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-xl font-bold flex items-center">
+                    <i class="fa-solid fa-scale-balanced text-amber-400 mr-2"></i>
+                    Life Style Pricer
+                    <span class="ml-2 text-[10px] bg-amber-500 text-black px-1.5 py-0.5 rounded font-bold">V3.1 (2024-2025版)</span>
+                </h1>
+                <p class="text-[10px] text-slate-400">インフレ・円安反映済み：全6ランク比較</p>
+            </div>
+            <div class="flex gap-1 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+                <button onclick="setPreset('survival')" class="whitespace-nowrap text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded transition border border-slate-600">
+                    <i class="fa-solid fa-skull mr-1"></i>限界
+                </button>
+                <button onclick="setPreset('standard')" class="whitespace-nowrap text-[10px] bg-sky-900 hover:bg-sky-800 text-white px-3 py-2 rounded transition">
+                    <i class="fa-solid fa-user mr-1"></i>標準
+                </button>
+                <button onclick="setPreset('rich')" class="whitespace-nowrap text-[10px] bg-indigo-900 hover:bg-indigo-800 text-white px-3 py-2 rounded transition">
+                    <i class="fa-solid fa-gem mr-1"></i>贅沢
+                </button>
+                <button onclick="setPreset('king')" class="whitespace-nowrap text-[10px] bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 hover:brightness-110 text-white px-4 py-2 rounded transition shadow-lg font-bold border border-yellow-300">
+                    <i class="fa-solid fa-crown mr-1"></i>石油王
+                </button>
+            </div>
+        </div>
+    </header>
 
-<div id="hud" class="novr-only">
-  <div class="hud-box">
-    <div class="mission-info" id="missionText">Loading...</div>
-    <span class="big-text" id="waveVal">WAVE 1</span><br>
-    <div id="bossLabel" class="boss-text" style="display:none;">BOSS 結界食い</div>
-    <span class="sub-text">ノルマ: <span id="targetVal" style="color:#f88;">-</span></span>
-  </div>
-  <div class="hud-box">
-    <span class="sub-text">HP: <span id="hpText">100</span></span><div class="bar-bg"><div id="hpBar" class="hp-val"></div></div><div style="height:4px;"></div>
-    <span class="sub-text" style="color:#00bfff;">SP: <span id="spText">100</span></span><div class="bar-bg"><div id="spBar" class="sp-val"></div></div>
-  </div>
-  <div class="hud-box" id="vipBox" style="display:none; border-color:#0f0;"><span class="sub-text" style="color:#0f0;">護衛対象</span><div class="bar-bg"><div id="vipHpBar" class="hp-val" style="background:#0ff;"></div></div></div>
-</div>
-<div id="msgArea"><div id="flashMsg" class="flash-msg"></div></div>
-<div id="centerReticle" class="novr-only"></div>
-<button id="vrBtn">VR START</button>
-<div id="uiLayer" class="novr-only">
-  <div id="stickZone"><div class="stick-base"><div id="stickJumpBtn"></div><div id="stickKnob" class="stick-knob"></div></div></div>
-  <div id="padArea">
-    <div id="modeSwitch" class="ghost">モード: 幽体</div>
-    <div id="btnUp" class="btn">距離<br><span id="distLabel" style="color:#fe0">近</span></div>
-    <div id="btnLeft" class="btn">滅<br><span style="font-size:10px">⇔解</span></div>
-    <div id="btnRight" class="btn">結<br><span style="font-size:10px">Hold</span></div>
-    <div id="btnDown" class="btn">跳</div>
-  </div>
-</div>
+    <div class="max-w-[1400px] mx-auto p-2 md:p-6 grid grid-cols-1 xl:grid-cols-12 gap-6 pb-safe">
 
-<script type="module" src="src/main.js"></script>
+        <div class="xl:col-span-9 space-y-8" id="options-container">
+            </div>
+
+        <div class="xl:col-span-3">
+            <div class="sticky top-24 bg-white rounded-2xl shadow-xl p-5 border border-slate-200 z-40">
+                <div class="flex justify-between items-end mb-4 border-b pb-2">
+                    <h2 class="text-lg font-bold text-slate-700">診断結果</h2>
+                    <span class="text-[10px] text-slate-400">税込・各種保険込</span>
+                </div>
+
+                <div class="space-y-3 mb-6">
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-4 rounded-xl text-white shadow-lg relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition">
+                            <i class="fa-solid fa-yen-sign text-4xl"></i>
+                        </div>
+                        <p class="text-[10px] text-slate-300 mb-1">必要な額面年収</p>
+                        <div class="flex items-baseline">
+                            <span class="text-3xl font-bold text-amber-400" id="total-yearly">0</span>
+                            <span class="text-xs text-slate-300 ml-1">万円</span>
+                        </div>
+                        <p class="text-[10px] text-red-300 mt-2 font-bold" id="tax-alert"></p>
+                    </div>
+
+                    <div class="bg-white border-2 border-slate-100 p-3 rounded-xl">
+                        <p class="text-[10px] text-slate-500 mb-0">月手取り必要額</p>
+                        <div class="flex items-baseline">
+                            <span class="text-2xl font-bold text-slate-800" id="total-monthly">0</span>
+                            <span class="text-xs text-slate-500 ml-1">万円</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative w-full h-40 mb-4">
+                    <canvas id="costChart"></canvas>
+                </div>
+
+                <div class="text-center p-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
+                    <p class="text-[10px] text-slate-400">Life Style Rank</p>
+                    <p class="text-sm font-bold mt-1 leading-tight" id="rank-text">-</p>
+                </div>
+
+                <button onclick="copyResult()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 text-xs shadow-md active:scale-95">
+                    <i class="fa-regular fa-copy"></i> 結果をコピー
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-3 xl:hidden shadow-[0_-5px_20px_rgba(0,0,0,0.15)] z-50">
+        <div class="flex justify-between items-center max-w-7xl mx-auto px-2">
+            <div>
+                <p class="text-[10px] text-slate-500">推定額面年収</p>
+                <p class="text-2xl font-bold text-slate-900 leading-none"><span id="mobile-yearly">0</span><span class="text-xs font-normal">万円</span></p>
+            </div>
+            <div class="text-right mr-4">
+                <p class="text-[10px] text-slate-500">月手取り</p>
+                <p class="text-lg font-bold text-sky-600 leading-none"><span id="mobile-monthly">0</span><span class="text-xs font-normal text-slate-400">万円</span></p>
+            </div>
+            <button onclick="window.scrollTo({top:0, behavior: 'smooth'})" class="h-10 w-10 bg-slate-800 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-slate-700 active:scale-90 transition">
+                <i class="fa-solid fa-arrow-up"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- データ定義 (全6ランク: 0=限界, 1=節約, 2=標準, 3=余裕, 4=富裕, 5=超富裕) ---
+        const categories = [
+            {
+                id: 'family',
+                title: '基本生活費・家族',
+                desc: '光熱費・通信・消耗品・保険・教育費 (インフレ反映)',
+                icon: 'fa-users',
+                options: [
+                    { id: 'f0', rank:0, label: '実家/寄生', price: 2.5, icon: 'fa-people-roof',
+                      detail: '<b>【家に入れろ】月2.5万円</b><br>実家での食費・光熱費負担分。<br>通信は格安SIM(1500円)、サブスクは解約。<br>「値上げ辛い」が口癖。' },
+                    { id: 'f1', rank:1, label: '独身ミニマム', price: 10.5, icon: 'fa-user',
+                      detail: '<b>【物価高直撃】月10.5万円</b><br>光熱費: 1.5万(高騰)<br>通信: 1.0万<br>日用品: 3.0万(値上げ)<br>保険・予備: 5.0万<br>※急な出費で赤字になるライン。' },
+                    { id: 'f2', rank:2, label: '夫婦2人', price: 18.5, icon: 'fa-user-group',
+                      detail: '<b>【共働き標準】月18.5万円</b><br>光熱費: 3.0万<br>通信: 2.0万<br>保険・医療: 3.5万<br>被服・雑費: 10.0万<br>※ユニクロも値上がりして躊躇する。' },
+                    { id: 'f3', rank:3, label: '子供1〜2人', price: 30.0, icon: 'fa-children',
+                      detail: '<b>【子育て世帯】月30.0万円</b><br>光熱費: 4.5万(夏冬は地獄)<br>教育・習い事: 6.0万<br>保険・医療: 6.0万<br>レジャー予備: 13.5万<br>※たまのディズニーもチケット高騰で痛手。' },
+                    { id: 'f4', rank:4, label: '教育熱心', price: 55.0, icon: 'fa-graduation-cap',
+                      detail: '<b>【私立・留学】月55.0万円</b><br>私立学費・塾: 25.0万<br>光熱費・通信: 10.0万<br>家事代行: 8.0万<br>その他: 12.0万<br>※教育費のインフレが止まらない。' },
+                    { id: 'f5', rank:5, label: 'VIP/執事', price: 150.0, icon: 'fa-chess-queen',
+                      detail: '<b>【使用人付き】月150万円〜</b><br>シッター/家政婦: 80万<br>インターナショナルスクール: 30万<br>施設維持(プール等): 20万<br>警備・セコム: 20万' }
+                ]
+            },
+            {
+                id: 'house',
+                title: '住まい',
+                desc: '家賃またはローン返済額 (都心部価格高騰)',
+                icon: 'fa-house',
+                options: [
+                    { id: 'h0', rank:0, label: '訳あり', price: 3.5, icon: 'fa-dungeon',
+                      detail: '<b>【風呂なし】月3.5万円</b><br>築50年木造、事故物件含む。<br>または郊外シェアハウス。<br>格安物件は競争率激化。' },
+                    { id: 'h1', rank:1, label: '郊外アパート', price: 7.0, icon: 'fa-building',
+                      detail: '<b>【1K・駅遠】月7.0万円</b><br>都心まで1時間。<br>ユニットバス。<br>更新料と家賃値上げにおびえる日々。' },
+                    { id: 'h2', rank:2, label: '都市部', price: 14.5, icon: 'fa-city',
+                      detail: '<b>【1LDK】月14.5万円</b><br>東京23区内マンション。<br>以前は12万だったが値上がり。<br>管理費・修繕積立金も上昇中。' },
+                    { id: 'h3', rank:3, label: '人気エリア', price: 26.0, icon: 'fa-house-chimney',
+                      detail: '<b>【2LDK〜】月26.0万円</b><br>世田谷・目黒エリア。<br>ファミリー物件は争奪戦。<br>7000万〜のローン返済相当。' },
+                    { id: 'h4', rank:4, label: 'タワマン', price: 55.0, icon: 'fa-hotel',
+                      detail: '<b>【高層階】月55.0万円</b><br>港区・湾岸エリア。<br>家賃相場は青天井。<br>共益費だけで地方の家賃並み。<br>海外富裕層が隣人。' },
+                    { id: 'h5', rank:5, label: '豪邸/別荘', price: 250.0, icon: 'fa-chess-rook',
+                      detail: '<b>【要塞】月250万円相当</b><br>広尾・麻布の低層レジデンス<br>軽井沢との2拠点生活。<br>固定資産税だけで高級車が買える。<br>地下駐車場完備。' }
+                ]
+            },
+            {
+                id: 'car',
+                title: '移動手段',
+                desc: '車両代・駐車場・維持費 (ガソリン高)',
+                icon: 'fa-car',
+                options: [
+                    { id: 'c0', rank:0, label: '徒歩', price: 0, icon: 'fa-person-walking',
+                      detail: '<b>【0円】</b><br>スニーカーも値上げしたが我慢。<br>移動は基本自分の足。<br>雨の日は外出しない。' },
+                    { id: 'c1', rank:1, label: '電車のみ', price: 1.5, icon: 'fa-train',
+                      detail: '<b>【運賃値上】月1.5万円</b><br>鉄道運賃も改定ラッシュ。<br>タクシーは深夜割増が怖くて乗れない。<br>バス移動がメイン。' },
+                    { id: 'c2', rank:2, label: '軽/中古', price: 5.5, icon: 'fa-car-side',
+                      detail: '<b>【生活の足】月5.5万円</b><br>車両代: 2.0万(中古高騰)<br>駐車場: 1.5万<br>ガソリン・税: 2.0万<br>※ガソリン代補助終了が痛い。' },
+                    { id: 'c3', rank:3, label: '新車SUV', price: 11.0, icon: 'fa-car',
+                      detail: '<b>【こだわり】月11.0万円</b><br>車両: 5.0万(ハリアー等値上)<br>駐車場: 3.0万<br>維持費: 3.0万<br>※タイヤ交換代も馬鹿にならない。' },
+                    { id: 'c4', rank:4, label: '高級車', price: 30.0, icon: 'fa-gem',
+                      detail: '<b>【ベンツ/BMW】月30.0万円</b><br>車両: 18.0万<br>都心駐車場: 7.0万<br>維持費: 5.0万<br>※円安で輸入車価格が高騰。' },
+                    { id: 'c5', rank:5, label: 'スーパーカー', price: 100.0, icon: 'fa-jet-fighter',
+                      detail: '<b>【フェラーリ他】月100万円〜</b><br>コレクション維持。<br>運転手(外注): 50万<br>保険・メンテ: 20万<br>空調ガレージ: 30万' }
+                ]
+            },
+            {
+                id: 'food',
+                title: '食事・趣味',
+                desc: '食費＋お小遣い (食材・外食費高騰)',
+                icon: 'fa-utensils',
+                options: [
+                    { id: 'fd0', rank:0, label: '生命維持', price: 2.5, icon: 'fa-bone',
+                      detail: '<b>【値上げ地獄】月2.5万円</b><br>パスタも卵も値上がり。<br>もやしと豆腐が主食。<br>業務用スーパーだけが味方。' },
+                    { id: 'fd1', rank:1, label: '自炊節約', price: 5.5, icon: 'fa-carrot',
+                      detail: '<b>【弁当男子】月5.5万円</b><br>コンビニ弁当は高級品(700円超)。<br>自炊しても食材が高い。<br>ポイ活で凌ぐ。' },
+                    { id: 'fd2', rank:2, label: 'たまに外食', price: 10.5, icon: 'fa-beer-mug-empty',
+                      detail: '<b>【週1飲み会】月10.5万円</b><br>食費: 6.5万<br>趣味・交際: 4.0万<br>※居酒屋も客単価5000円時代。<br>サブスク厳選が必要。' },
+                    { id: 'fd3', rank:3, label: 'グルメ', price: 20.0, icon: 'fa-wine-glass',
+                      detail: '<b>【インバウンド価格】月20.0万円</b><br>食費: 10.0万<br>趣味・美容: 10.0万<br>※ランチ2000円が当たり前。<br>デパコスも値上げラッシュ。' },
+                    { id: 'fd4', rank:4, label: '美食家', price: 50.0, icon: 'fa-champagne-glasses',
+                      detail: '<b>【毎日外食】月50.0万円</b><br>西麻布・銀座のコースは3万〜。<br>予約困難店はさらに高騰。<br>美容医療に月10万。' },
+                    { id: 'fd5', rank:5, label: '専属シェフ', price: 200.0, icon: 'fa-martini-glass-citrus',
+                      detail: '<b>【パーティ】月200万円〜</b><br>出張シェフ/会員制クラブ。<br>ワイン1本20万〜。<br>海外旅行は燃油高でもビジネスクラス。' }
+                ]
+            },
+            {
+                id: 'invest',
+                title: '投資・貯金',
+                desc: '将来への備え (新NISA対応)',
+                icon: 'fa-piggy-bank',
+                options: [
+                    { id: 'i0', rank:0, label: '借金', price: -3.0, icon: 'fa-ban',
+                      detail: '<b>【自転車操業】赤字3.0万円</b><br>生活費不足をカードで補填。<br>金利負担が重くのしかかる。<br>貯金は夢のまた夢。' },
+                    { id: 'i1', rank:1, label: 'なし', price: 0, icon: 'fa-wallet',
+                      detail: '<b>【プラマイゼロ】0円</b><br>給料日前はもやし生活。<br>「老後2000万？無理」<br>現状維持で精一杯。' },
+                    { id: 'i2', rank:2, label: '新NISA', price: 10.0, icon: 'fa-coins',
+                      detail: '<b>【つみたて枠満額】月10.0万円</b><br>新NISAつみたて枠(月10万)を埋める。<br>将来のインフレヘッジ。<br>堅実な資産形成のスタンダード。' },
+                    { id: 'i3', rank:3, label: '資産形成', price: 20.0, icon: 'fa-money-bill-trend-up',
+                      detail: '<b>【成長枠活用】月20.0万円</b><br>つみたて+成長枠。<br>iDeCoも併用。<br>マス層からの脱出を目指す。' },
+                    { id: 'i4', rank:4, label: 'FIRE狙い', price: 50.0, icon: 'fa-sack-dollar',
+                      detail: '<b>【給料の半分】月50.0万円</b><br>年間600万円投資。<br>インフレに負けない資産作り。<br>配当金生活への最短ルート。' },
+                    { id: 'i5', rank:5, label: '投資家', price: 500.0, icon: 'fa-hand-holding-dollar',
+                      detail: '<b>【事業投資】月500万円〜</b><br>エンジェル投資、不動産。<br>資産が資産を生むサイクル。<br>相続税対策が至上命題。' }
+                ]
+            }
+        ];
+
+        let selections = {};
+        let chartInstance = null;
+
+        function init() {
+            const container = document.getElementById('options-container');
+
+            categories.forEach(cat => {
+                selections[cat.id] = cat.options[2]; // 初期値：標準
+
+                const section = document.createElement('div');
+                section.className = "bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200";
+
+                // ヘッダー
+                const header = document.createElement('div');
+                header.className = "flex items-center gap-3 mb-4";
+                header.innerHTML = `
+                    <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xl">
+                        <i class="fa-solid ${cat.icon}"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">${cat.title}</h3>
+                        <p class="text-[10px] text-slate-400">${cat.desc}</p>
+                    </div>
+                `;
+                section.appendChild(header);
+
+                // グリッド (6つなので 2列x3行 or 3列x2行)
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3";
+
+                cat.options.forEach(opt => {
+                    const btn = document.createElement('div');
+                    btn.className = `card-option group relative bg-white border border-slate-200 rounded-xl p-2 cursor-pointer flex flex-col justify-between h-full hover:border-slate-300`;
+                    btn.dataset.rank = opt.rank;
+                    btn.id = `btn-${cat.id}-${opt.id}`;
+                    btn.onclick = (e) => {
+                        if(e.target.closest('.detail-btn')) return;
+                        selectOption(cat.id, opt);
+                    };
+
+                    // カードの中身
+                    let priceDisplay = opt.price >= 0 ? opt.price.toFixed(1) : `<span class="text-red-500">${opt.price.toFixed(1)}</span>`;
+
+                    btn.innerHTML = `
+                        <div class="text-center pt-2 pb-1">
+                            <div class="text-xl mb-1 text-slate-300 group-hover:text-slate-500 transition-colors">
+                                <i class="fa-solid ${opt.icon}"></i>
+                            </div>
+                            <div class="text-[11px] font-bold text-slate-600 leading-tight mb-1">${opt.label}</div>
+                            <div class="text-base font-bold text-slate-800">${priceDisplay}<span class="text-[10px] font-normal text-slate-400 ml-0.5">万</span></div>
+                        </div>
+
+                        <button onclick="toggleDetail('${cat.id}', '${opt.id}')" class="detail-btn mt-2 w-full py-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg text-[10px] text-slate-500 font-medium transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-circle-info"></i> 詳細
+                        </button>
+
+                        <div id="detail-${cat.id}-${opt.id}" class="detail-box absolute top-full left-0 z-50 w-64 bg-white border border-slate-200 rounded-lg shadow-xl p-3 text-xs text-slate-600 text-left mt-2 hidden">
+                            <div class="mb-1">${opt.detail}</div>
+                            <div class="text-[10px] text-right text-sky-500 cursor-pointer underline" onclick="this.parentElement.style.display='none'">閉じる</div>
+                        </div>
+                    `;
+                    grid.appendChild(btn);
+                });
+
+                section.appendChild(grid);
+                container.appendChild(section);
+            });
+
+            // 外部クリックで詳細を閉じる
+            document.addEventListener('click', (e) => {
+                if(!e.target.closest('.card-option')) {
+                    document.querySelectorAll('.detail-box').forEach(el => {
+                        el.style.display = 'none';
+                        el.classList.remove('show');
+                    });
+                }
+            });
+
+            updateUI();
+        }
+
+        function selectOption(catId, option) {
+            selections[catId] = option;
+            updateUI();
+        }
+
+        function toggleDetail(catId, optId) {
+            // 他を閉じる
+            document.querySelectorAll('.detail-box').forEach(el => {
+                if(el.id !== `detail-${catId}-${optId}`) {
+                    el.style.display = 'none';
+                    el.classList.remove('show');
+                }
+            });
+
+            const box = document.getElementById(`detail-${catId}-${optId}`);
+            if(box.style.display === 'block') {
+                box.style.display = 'none';
+                box.classList.remove('show');
+            } else {
+                box.style.display = 'block';
+                box.classList.add('show');
+
+                // 画面端の調整（簡易版）
+                const rect = box.parentElement.getBoundingClientRect();
+                if(rect.right > window.innerWidth) {
+                    box.style.left = 'auto';
+                    box.style.right = '0';
+                } else {
+                    box.style.left = '0';
+                    box.style.right = 'auto';
+                }
+            }
+        }
+
+        function setPreset(type) {
+            categories.forEach(cat => {
+                let idx = 2; // default
+                if (type === 'survival') idx = 0;
+                else if (type === 'min') idx = 1; // standard button name conflict fix
+                else if (type === 'standard') idx = 2;
+                else if (type === 'rich') idx = 3; // "贅沢"
+                else if (type === 'king') idx = 5; // Max
+                selections[cat.id] = cat.options[idx] || cat.options[cat.options.length-1];
+            });
+            updateUI();
+        }
+
+        function updateUI() {
+            // スタイル
+            document.querySelectorAll('.card-option').forEach(el => el.classList.remove('card-selected'));
+            for(const [id, opt] of Object.entries(selections)){
+                const btn = document.getElementById(`btn-${id}-${opt.id}`);
+                if(btn) btn.classList.add('card-selected');
+            }
+
+            // 計算
+            let monthlyNet = 0;
+            let data = [];
+            let labels = [];
+
+            categories.forEach(cat => {
+                const price = selections[cat.id].price;
+                monthlyNet += price;
+                labels.push(cat.title.substring(0, 4));
+                data.push(Math.max(0, price)); // グラフ用にマイナスは0扱い
+            });
+
+            monthlyNet = parseFloat(monthlyNet.toFixed(1));
+
+            // 年収逆算（超高所得対応）
+            // 実効税率を意識したカーブ
+            let m = 1.25;
+            if(monthlyNet > 20) m = 1.30;
+            if(monthlyNet > 40) m = 1.40;
+            if(monthlyNet > 70) m = 1.50;
+            if(monthlyNet > 100) m = 1.65; // 年収2000万級
+            if(monthlyNet > 200) m = 1.85; // 年収4500万級
+            if(monthlyNet > 400) m = 2.00; // 億超え (半分税金)
+
+            const yearly = Math.round(monthlyNet * 12 * m);
+
+            // 表示
+            document.getElementById('total-monthly').innerText = monthlyNet.toLocaleString(undefined, {minimumFractionDigits: 1});
+            document.getElementById('total-yearly').innerText = yearly.toLocaleString();
+            document.getElementById('mobile-monthly').innerText = monthlyNet.toLocaleString(undefined, {minimumFractionDigits: 1});
+            document.getElementById('mobile-yearly').innerText = yearly.toLocaleString();
+
+            const rankEl = document.getElementById('rank-text');
+            const alertEl = document.getElementById('tax-alert');
+            alertEl.innerText = "";
+
+            if(yearly < 400) {
+                rankEl.innerText = "💀 限界サバイバー";
+                rankEl.className = "text-sm font-bold mt-1 text-slate-500";
+            } else if(yearly < 700) {
+                rankEl.innerText = "🌱 一般市民";
+                rankEl.className = "text-sm font-bold mt-1 text-green-600";
+            } else if(yearly < 1200) {
+                rankEl.innerText = "✨ プチ贅沢層";
+                rankEl.className = "text-sm font-bold mt-1 text-sky-600";
+            } else if(yearly < 2500) {
+                rankEl.innerText = "💎 アッパー層";
+                rankEl.className = "text-sm font-bold mt-1 text-indigo-600";
+                alertEl.innerText = "※所得税率33%〜40%ゾーン突入";
+            } else if(yearly < 6000) {
+                rankEl.innerText = "👑 富裕層";
+                rankEl.className = "text-sm font-bold mt-1 text-purple-600";
+                alertEl.innerText = "※稼ぎの45%以上が税金等で消えます";
+            } else {
+                rankEl.innerText = "🦁 石油王・国家予算級";
+                rankEl.className = "text-sm font-bold mt-1 text-amber-500 drop-shadow-sm";
+                alertEl.innerText = "※税金だけで家が建ちます";
+            }
+
+            updateChart(labels, data);
+        }
+
+        function updateChart(labels, data){
+            const ctx = document.getElementById('costChart').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#64748b', '#0ea5e9', '#f59e0b', '#f43f5e', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '75%'
+                }
+            });
+        }
+
+        function copyResult(){
+            const y = document.getElementById('total-yearly').innerText;
+            const m = document.getElementById('total-monthly').innerText;
+            const r = document.getElementById('rank-text').innerText;
+            const text = `私の理想の人生価格：\n年収【${y}万円】(手取り月${m}万)\nランク：${r}\n#LifeStylePricer`;
+            navigator.clipboard.writeText(text).then(()=>alert('コピーしました'));
+        }
+
+        window.onload = init;
+    </script>
 </body>
 </html>
