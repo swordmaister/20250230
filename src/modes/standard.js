@@ -138,56 +138,57 @@ export class StandardMode {
     }
 
     spawnCompositeBoss() {
-        this.game.showMsg("WARNING: FALLING OBJECT", "#f00"); // Spec 3: Warning
+        this.game.showMsg("WARNING: FALLING OBJECT", "#f00");
         const b=new CANNON.Body({mass:0}); b.position.set(0,20,0); b.id=-999;
         const m=new THREE.Group(); this.game.scene.add(m);
         this.game.entities.enemies.push({body:b, mesh:m, isCompositeCore:true, partsCount:0});
         const add=(x,y,z,sx,sy,sz,hp)=>{
             const pb=new CANNON.Body({mass:50, collisionFilterGroup:4, collisionFilterMask:1|2|4});
-            // Spawn high up (Y+40)
+            // Spawn high up (Y+60)
             pb.addShape(new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))); pb.position.set(x,60+y,z); this.game.world.addBody(pb);
             const pm=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color:this.config.colors.giant}));
             this.game.scene.add(pm);
             this.game.entities.enemies.push({body:pb, mesh:pm, isCompositePart:true, parentId:b.id, hp});
             this.game.entities.enemies[this.game.entities.enemies.length-2].partsCount++;
         };
-        add(0,0,0,6,10,4,10); add(-8,5,0,3,8,3,5); add(8,5,0,3,8,3,5); add(0,8,0,4,4,4,5);
+        add(0,0,0,6,10,4,20); add(-8,5,0,3,8,3,10); add(8,5,0,3,8,3,10); add(0,8,0,4,4,4,10);
         this.game.spawnText("解体目標 落下!!", new THREE.Vector3(0,30,0), "#f00");
     }
 
     spawnPuzzleGroup() {
         const cx = (Math.random()-.5)*this.config.field.width;
         const cz = (Math.random()-.5)*this.config.field.depth;
-        const cy = 15;
-        // Boss-like size: Radius 3.0
-        const coreB = new CANNON.Body({mass:200, shape:new CANNON.Sphere(3.0), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+        const cy = 20; // Higher
+        // Boss-like size: Radius 4.0 (Big!)
+        const coreB = new CANNON.Body({mass:500, shape:new CANNON.Sphere(4.0), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
         coreB.position.set(cx, cy, cz); this.game.world.addBody(coreB);
-        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(3.0), new THREE.MeshStandardMaterial({color:0xffff00}));
+        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(4.0), new THREE.MeshStandardMaterial({color:0xffff00}));
         this.game.scene.add(coreM);
 
         const coreId = coreB.id;
         const parts = [];
         const colors = [0xff0000, 0x00ff00, 0x0000ff];
 
-        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:20, puzzleParts:[], isInvincible:true});
+        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:50, puzzleParts:[], isInvincible:true}); // More HP
         const coreRef = this.game.entities.enemies[this.game.entities.enemies.length-1];
 
-        // Spawn 3 Minions (Boss-like size: Box 3x3x3)
+        // Spawn 3 Minions (Boss-like size: Box 4x4x4)
         colors.forEach((c, i) => {
             const angle = (i / 3) * Math.PI * 2;
-            const mx = cx + Math.cos(angle) * 8; // Larger radius
-            const mz = cz + Math.sin(angle) * 8;
-            const mb = new CANNON.Body({mass:50, shape:new CANNON.Box(new CANNON.Vec3(1.5,1.5,1.5)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            const mx = cx + Math.cos(angle) * 12; // Radius 12
+            const mz = cz + Math.sin(angle) * 12;
+            const mb = new CANNON.Body({mass:100, shape:new CANNON.Box(new CANNON.Vec3(2,2,2)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
             mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
-            const mm = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshStandardMaterial({color:c}));
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(4,4,4), new THREE.MeshStandardMaterial({color:c}));
             this.game.scene.add(mm);
 
-            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:5, puzzleId:i, parentId:coreId, colorVal:c});
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:coreId, colorVal:c}); // More HP
         });
 
         const order = [0, 1, 2].sort(() => Math.random() - 0.5);
         coreRef.puzzleOrder = order;
         coreRef.currentStep = 0;
+        coreRef.lastKillTime = 0; // For simultaneous check
         this.game.spawnText("PUZZLE BOSS: 順序ヲ守レ", new THREE.Vector3(cx, cy+8, cz), "#ff0");
     }
 
@@ -305,6 +306,35 @@ export class StandardMode {
         setTimeout(() => this.nextWave(), 2000);
     }
 
+    // New Method: Handle Metsu Damage
+    onMetsuHit(e) {
+        if (!e) return;
+
+        // Damage Logic for Bosses
+        if (e.isBoss || e.type === 'puzzle_minion' || e.type === 'puzzle_core' || e.isCompositePart || e.type === 'eater') {
+            e.hp = (e.hp || 1) - 10; // 10 damage per metsu tick/hit
+            this.game.spawnText("HIT!", e.mesh.position, "#f00");
+
+            // Push back
+            if (e.body) {
+                const push = e.body.position.vsub(this.game.player.body.position);
+                push.normalize();
+                e.body.applyImpulse(push.scale(50), e.body.position);
+            }
+
+            if (e.hp <= 0) {
+                this.killEnemy(e);
+            } else {
+                // Flash effect
+                e.mesh.material.emissive.setHex(0xff0000);
+                setTimeout(() => { if(e.mesh) e.mesh.material.emissive.setHex(0x000000); }, 100);
+            }
+        } else {
+            // Instant kill for small fries
+            this.killEnemy(e);
+        }
+    }
+
     killEnemy(e, isEscape=false) {
         if(!this.game.entities.enemies.includes(e))return;
 
@@ -313,7 +343,7 @@ export class StandardMode {
 
         // Composite Boss Logic
         if(e.isCompositePart) {
-            this.game.spawnParticle(e.mesh.position,15,0xffaa00); this.removeEnemy(e);
+            this.game.spawnParticle(e.mesh.position,25,0xffaa00); this.removeEnemy(e);
             const p=this.game.entities.enemies.find(en=>en.body.id===e.parentId); if(p){p.partsCount--; if(p.partsCount<=0) { this.removeEnemy(p); this.game.gameState.req=0; this.completeWave(); }}
             return;
         }
@@ -322,7 +352,18 @@ export class StandardMode {
         if(e.type === 'puzzle_minion') {
             const core = this.game.entities.enemies.find(en => en.body.id === e.parentId);
             if(core) {
+                const now = Date.now();
+                const timeDiff = now - (core.lastKillTime || 0);
+                core.lastKillTime = now;
+
                 const requiredIndex = core.puzzleOrder[core.currentStep];
+
+                // Spec 1: Simultaneous Kill Check (Too fast = Fail) or Wrong Order
+                if (timeDiff < 500) { // < 0.5s means simultaneous
+                     this.failPuzzle(core, e, "同時撃破不可!");
+                     return;
+                }
+
                 if (e.puzzleId === requiredIndex) {
                     // Correct Order
                     this.game.spawnText("OK!", e.mesh.position, "#0f0");
@@ -335,32 +376,8 @@ export class StandardMode {
                         this.game.spawnText("防御解除!", core.mesh.position, "#f00");
                     }
                 } else {
-                    // Wrong Order - Punish (Respawn ALL minions)
-                    this.game.spawnText("順序不正! 全復活", e.mesh.position, "#f00");
-                    this.game.spawnParticle(e.mesh.position, 20, 0x555555);
-
-                    // Remove current minions
-                    [...this.game.entities.enemies].forEach(en => {
-                        if(en.type === 'puzzle_minion' && en.parentId === core.body.id) this.removeEnemy(en);
-                    });
-
-                    // Reset Step and Respawn
-                    core.currentStep = 0;
-                    const cx = core.body.position.x;
-                    const cz = core.body.position.z;
-
-                    const colors = [0xff0000, 0x00ff00, 0x0000ff];
-                    colors.forEach((c, i) => {
-                        const angle = (i / 3) * Math.PI * 2;
-                        const mx = cx + Math.cos(angle) * 8; // Larger radius for Boss feel
-                        const mz = cz + Math.sin(angle) * 8;
-                        const mb = new CANNON.Body({mass:20, shape:new CANNON.Box(new CANNON.Vec3(1.5,1.5,1.5)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4}); // Bigger Minions
-                        mb.position.set(mx, 15, mz); this.game.world.addBody(mb);
-                        const mm = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshStandardMaterial({color:c})); // Bigger
-                        this.game.scene.add(mm);
-
-                        this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:3, puzzleId:i, parentId:core.body.id, colorVal:c});
-                    });
+                    // Wrong Order
+                    this.failPuzzle(core, e, "順序不正!");
                 }
             } else {
                 this.removeEnemy(e); // Orphaned minion
@@ -372,7 +389,6 @@ export class StandardMode {
                 this.game.spawnText("無敵", e.mesh.position, "#888");
                 return;
             }
-            // If vulnerable, proceed to standard kill
         }
 
         this.removeEnemy(e);
@@ -393,6 +409,35 @@ export class StandardMode {
                 this.completeWave();
             }
         } else { this.spawnEnemy(); }
+    }
+
+    failPuzzle(core, e, msg) {
+        this.game.spawnText(msg + " 全復活", e.mesh.position, "#f00");
+        this.game.spawnParticle(e.mesh.position, 20, 0x555555);
+
+        // Remove all current minions
+        [...this.game.entities.enemies].forEach(en => {
+            if(en.type === 'puzzle_minion' && en.parentId === core.body.id) this.removeEnemy(en);
+        });
+
+        // Reset Step and Respawn
+        core.currentStep = 0;
+        const cx = core.body.position.x;
+        const cz = core.body.position.z;
+        const cy = 20;
+
+        const colors = [0xff0000, 0x00ff00, 0x0000ff];
+        colors.forEach((c, i) => {
+            const angle = (i / 3) * Math.PI * 2;
+            const mx = cx + Math.cos(angle) * 12;
+            const mz = cz + Math.sin(angle) * 12;
+            const mb = new CANNON.Body({mass:100, shape:new CANNON.Box(new CANNON.Vec3(2,2,2)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(4,4,4), new THREE.MeshStandardMaterial({color:c}));
+            this.game.scene.add(mm);
+
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:core.body.id, colorVal:c});
+        });
     }
 
     removeEnemy(e) {
@@ -683,6 +728,14 @@ export class StandardMode {
                 }
             } else {
                 e.outsideTimer = 0;
+            }
+
+            // Spec 4: High Flight Ceiling (60m)
+            if (e.body.position.y > 60) {
+                 e.body.applyForce(new CANNON.Vec3(0, -20 * e.body.mass, 0), pos);
+            } else if (['boss_eater_core'].includes(e.type) && e.body.position.y < 30) {
+                 // Force Boss up
+                 e.body.applyForce(new CANNON.Vec3(0, 50 * e.body.mass, 0), pos);
             }
 
             e.mesh.position.copy(pos); e.mesh.quaternion.copy(e.body.quaternion);

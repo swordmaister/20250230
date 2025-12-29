@@ -46,7 +46,10 @@ export class InfiniteMode extends StandardMode {
         // Higher chance of dangerous types
         let type = 'normal';
         const r = Math.random();
-        if (r < 0.1) type = 'boss_eater_core'; // Rare Boss appearance
+        // Limit Boss Core to 1 instance (Spec 6)
+        if (r < 0.1 && !this.game.entities.enemies.some(e => e.type === 'boss_eater_core')) {
+             type = 'boss_eater_core';
+        }
         else if (r < 0.3) type = 'fire';
         else if (r < 0.5) type = 'phantom';
         else if (r < 0.6) type = 'eater';
