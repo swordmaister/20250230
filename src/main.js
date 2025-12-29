@@ -1,6 +1,7 @@
 import { Game } from './game.js';
 import { StandardMode } from './modes/standard.js';
 import { AwakenedMode } from './modes/awakened.js';
+import { InfiniteMode } from './modes/infinite.js';
 
 window.onload = function() {
     // Mode Selection Screen
@@ -15,13 +16,17 @@ window.onload = function() {
 
     const btnStandard = createButton("Standard Mode", "#0f0", "Original Sensitivity Tuned Experience");
     const btnAwakened = createButton("Awakened Mode", "#a0f", "Absolute Boundary & Chain Destruction");
+    const btnInfinite = createButton("Infinite Mode", "#f00", "Endless Survival (Spec 6)");
 
     btnStandard.onclick = () => startGame(new StandardMode());
     btnAwakened.onclick = () => startGame(new AwakenedMode());
+    btnInfinite.onclick = () => startGame(new InfiniteMode());
 
     modeScreen.appendChild(btnStandard);
     modeScreen.appendChild(document.createElement('br'));
     modeScreen.appendChild(btnAwakened);
+    modeScreen.appendChild(document.createElement('br'));
+    modeScreen.appendChild(btnInfinite);
     document.body.appendChild(modeScreen);
 
     function createButton(text, color, sub) {

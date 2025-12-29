@@ -138,61 +138,57 @@ export class StandardMode {
     }
 
     spawnCompositeBoss() {
+        this.game.showMsg("WARNING: FALLING OBJECT", "#f00"); // Spec 3: Warning
         const b=new CANNON.Body({mass:0}); b.position.set(0,20,0); b.id=-999;
         const m=new THREE.Group(); this.game.scene.add(m);
         this.game.entities.enemies.push({body:b, mesh:m, isCompositeCore:true, partsCount:0});
         const add=(x,y,z,sx,sy,sz,hp)=>{
             const pb=new CANNON.Body({mass:50, collisionFilterGroup:4, collisionFilterMask:1|2|4});
-            pb.addShape(new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))); pb.position.set(x,20+y,z); this.game.world.addBody(pb);
+            // Spawn high up (Y+40)
+            pb.addShape(new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))); pb.position.set(x,60+y,z); this.game.world.addBody(pb);
             const pm=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color:this.config.colors.giant}));
             this.game.scene.add(pm);
             this.game.entities.enemies.push({body:pb, mesh:pm, isCompositePart:true, parentId:b.id, hp});
             this.game.entities.enemies[this.game.entities.enemies.length-2].partsCount++;
         };
         add(0,0,0,6,10,4,10); add(-8,5,0,3,8,3,5); add(8,5,0,3,8,3,5); add(0,8,0,4,4,4,5);
-        this.game.spawnText("解体目標出現", new THREE.Vector3(0,30,0), "#f00");
+        this.game.spawnText("解体目標 落下!!", new THREE.Vector3(0,30,0), "#f00");
     }
 
     spawnPuzzleGroup() {
         const cx = (Math.random()-.5)*this.config.field.width;
         const cz = (Math.random()-.5)*this.config.field.depth;
         const cy = 15;
-        const coreB = new CANNON.Body({mass:50, shape:new CANNON.Sphere(1.5), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+        // Boss-like size: Radius 3.0
+        const coreB = new CANNON.Body({mass:200, shape:new CANNON.Sphere(3.0), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
         coreB.position.set(cx, cy, cz); this.game.world.addBody(coreB);
-        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5), new THREE.MeshStandardMaterial({color:0xffff00}));
+        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(3.0), new THREE.MeshStandardMaterial({color:0xffff00}));
         this.game.scene.add(coreM);
 
         const coreId = coreB.id;
         const parts = [];
         const colors = [0xff0000, 0x00ff00, 0x0000ff];
 
-        // Spawn Core
-        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:10, puzzleParts:[], isInvincible:true});
+        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:20, puzzleParts:[], isInvincible:true});
         const coreRef = this.game.entities.enemies[this.game.entities.enemies.length-1];
 
-        // Spawn 3 Minions
+        // Spawn 3 Minions (Boss-like size: Box 3x3x3)
         colors.forEach((c, i) => {
             const angle = (i / 3) * Math.PI * 2;
-            const mx = cx + Math.cos(angle) * 5;
-            const mz = cz + Math.sin(angle) * 5;
-            const mb = new CANNON.Body({mass:20, shape:new CANNON.Box(new CANNON.Vec3(1,1,1)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            const mx = cx + Math.cos(angle) * 8; // Larger radius
+            const mz = cz + Math.sin(angle) * 8;
+            const mb = new CANNON.Body({mass:50, shape:new CANNON.Box(new CANNON.Vec3(1.5,1.5,1.5)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
             mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
-            const mm = new THREE.Mesh(new THREE.BoxGeometry(2,2,2), new THREE.MeshStandardMaterial({color:c}));
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshStandardMaterial({color:c}));
             this.game.scene.add(mm);
 
-            const minion = {body:mb, mesh:mm, type:'puzzle_minion', hp:3, puzzleId:i, parentId:coreId, colorVal:c};
-            this.game.entities.enemies.push(minion);
-            parts.push(minion);
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:5, puzzleId:i, parentId:coreId, colorVal:c});
         });
 
-        // Randomize Order logic is handled in killEnemy by checking remaining parts or specific index?
-        // Simpler: Killing any minion is fine, but they must ALL die to make core vulnerable.
-        // Or "Correct Order" as per spec? Spec says "Correct Order (randomly set)".
-        // Let's assign an order to the parts.
         const order = [0, 1, 2].sort(() => Math.random() - 0.5);
-        coreRef.puzzleOrder = order; // [2, 0, 1] means kill index 2, then 0, then 1.
+        coreRef.puzzleOrder = order;
         coreRef.currentStep = 0;
-        this.game.spawnText("PUZZLE: 順序ヲ守レ", new THREE.Vector3(cx, cy+5, cz), "#ff0");
+        this.game.spawnText("PUZZLE BOSS: 順序ヲ守レ", new THREE.Vector3(cx, cy+8, cz), "#ff0");
     }
 
     spawnEnemy(forceType=null) {
@@ -284,9 +280,13 @@ export class StandardMode {
         if(type === 'boss_eater_core') hpVal = 50 * hpMult;
 
         const isBoss = (type === 'boss_eater_core');
+
+        // Spec 8: Initial Patrol State
+        const initState = (['normal','roller','jumper'].includes(type) && Math.random()<0.5) ? 'patrol' : 'chase';
+
         this.game.entities.enemies.push({
             body:b, mesh:m, type, hp: hpVal, hpMax: hpVal,
-            state:'normal', wetTimer:0,
+            state: initState, wetTimer:0,
             isTarget:(type==='target'),
             isBoss: isBoss,
             floatOffset: Math.random()*100
@@ -335,14 +335,32 @@ export class StandardMode {
                         this.game.spawnText("防御解除!", core.mesh.position, "#f00");
                     }
                 } else {
-                    // Wrong Order - Punish (Respawn or explosion?)
-                    this.game.spawnText("順序不正!", e.mesh.position, "#f00");
-                    this.game.spawnParticle(e.mesh.position, 10, 0x555555);
-                    // Don't kill, maybe push away
-                    const push = e.body.position.vsub(this.game.player.body.position); push.normalize();
-                    e.body.applyImpulse(push.scale(50), e.body.position);
-                    // Reset puzzle? Or just fail this attempt.
-                    // Spec says "Cannot fully kill".
+                    // Wrong Order - Punish (Respawn ALL minions)
+                    this.game.spawnText("順序不正! 全復活", e.mesh.position, "#f00");
+                    this.game.spawnParticle(e.mesh.position, 20, 0x555555);
+
+                    // Remove current minions
+                    [...this.game.entities.enemies].forEach(en => {
+                        if(en.type === 'puzzle_minion' && en.parentId === core.body.id) this.removeEnemy(en);
+                    });
+
+                    // Reset Step and Respawn
+                    core.currentStep = 0;
+                    const cx = core.body.position.x;
+                    const cz = core.body.position.z;
+
+                    const colors = [0xff0000, 0x00ff00, 0x0000ff];
+                    colors.forEach((c, i) => {
+                        const angle = (i / 3) * Math.PI * 2;
+                        const mx = cx + Math.cos(angle) * 8; // Larger radius for Boss feel
+                        const mz = cz + Math.sin(angle) * 8;
+                        const mb = new CANNON.Body({mass:20, shape:new CANNON.Box(new CANNON.Vec3(1.5,1.5,1.5)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4}); // Bigger Minions
+                        mb.position.set(mx, 15, mz); this.game.world.addBody(mb);
+                        const mm = new THREE.Mesh(new THREE.BoxGeometry(3,3,3), new THREE.MeshStandardMaterial({color:c})); // Bigger
+                        this.game.scene.add(mm);
+
+                        this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:3, puzzleId:i, parentId:core.body.id, colorVal:c});
+                    });
                 }
             } else {
                 this.removeEnemy(e); // Orphaned minion
@@ -585,10 +603,28 @@ export class StandardMode {
                 e.body.angularVelocity.set(0, 0.5, 0);
             }
             else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus'].includes(e.type)) {
-                // Spec 3: Aggressive Tracking
-                const dir = new CANNON.Vec3().copy(targetPos).vsub(pos); dir.normalize();
+                // Spec 8: Patrol or Chase
+                let dir = new CANNON.Vec3();
 
-                // Spec 3: Dive Bomb
+                if (e.state === 'patrol') {
+                    if (!e.patrolPoint) {
+                        // Pick a random patrol point on the field
+                        const fW = this.config.field.width * 0.8;
+                        const fD = this.config.field.depth * 0.8;
+                        e.patrolPoint = new CANNON.Vec3((Math.random()-0.5)*fW, 10, (Math.random()-0.5)*fD);
+                    }
+                    dir.copy(e.patrolPoint).vsub(pos);
+                    dir.normalize();
+
+                    // Check if reached or Player near
+                    if (pos.distanceTo(e.patrolPoint) < 5.0) e.patrolPoint = null; // Next point
+                    if (distToT < 20.0) { e.state = 'chase'; this.game.spawnText("発見!", pos, "#f00"); } // Switch to chase
+                } else {
+                    // Chase
+                    dir.copy(targetPos).vsub(pos); dir.normalize();
+                }
+
+                // Spec 3: Dive Bomb (Only if chasing or high up)
                 if (pos.y > 15 && distToT < 30 && Math.random() < 0.05) {
                     const dive = new CANNON.Vec3().copy(targetPos).vsub(pos).normalize();
                     e.body.velocity.set(dive.x*50, dive.y*50, dive.z*50);
@@ -600,7 +636,7 @@ export class StandardMode {
                         if(pos.y < 1 && Math.random()<0.05) e.body.velocity.y=15;
                         e.body.applyForce(dir.scale(15), pos);
                     }
-                    else { e.body.applyForce(dir.scale(20), pos); } // Cone, Torus, Normal
+                    else { e.body.applyForce(dir.scale(20), pos); }
                 }
 
                 if (distToT < 1.5) {

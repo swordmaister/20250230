@@ -149,6 +149,11 @@ export class Game {
 
         if(this.player && this.player.drawCooldown > 0) { ctx.fillStyle="#f0f"; ctx.fillText("！共鳴妨害！", 20, 115); }
 
+        // Spec 7: Score
+        const score = Math.floor(this.stats.damageDealt * 10 - this.stats.damageTaken * 2);
+        ctx.fillStyle = "#fff"; ctx.font="16px sans-serif";
+        ctx.fillText(`SCORE: ${score}`, 400, 115);
+
         this.vrHudMesh.material.map.needsUpdate = true;
     }
 
@@ -188,6 +193,26 @@ export class Game {
 
         // Entity updates
         this.entities.waterSplashes = this.entities.waterSplashes.filter(s => { s.timer -= dt; return s.timer > 0; });
+
+        // Spec 2: Target Marker (Target Tracking)
+        if(this.targetArrow) {
+            const target = this.entities.enemies.find(e => e.isTarget || e.isBoss);
+            if(target) {
+                this.targetArrow.visible = true;
+                this.targetArrow.position.copy(target.mesh.position).add(new THREE.Vector3(0, 4, 0));
+                this.targetArrow.rotation.y += dt * 3;
+                // Add pillar effect if not present
+                if(!target.markerPillar) {
+                    const geo = new THREE.CylinderGeometry(0.5, 0.5, 200, 8);
+                    const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.2});
+                    target.markerPillar = new THREE.Mesh(geo, mat);
+                    target.markerPillar.position.y = 100;
+                    target.mesh.add(target.markerPillar);
+                }
+            } else {
+                this.targetArrow.visible = false;
+            }
+        }
 
         this.entities.kekkai.forEach(k=>{
             if(!k.shrinking)return;

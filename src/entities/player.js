@@ -572,6 +572,19 @@ export class Player {
 
     updateHUD() {
         const els = this.game.els;
+
+        // Spec 7: Real-time Score (Mobile)
+        if(!els.scoreText) {
+            const d = document.createElement('div');
+            d.style.cssText = "position:absolute; top:5px; right:10px; font-size:16px; font-weight:bold; color:#fff; text-shadow:1px 1px 1px #000;";
+            els.hudBox = document.querySelector('.hud-box'); // Find parent or append to hud
+            // Actually better to append to #hud
+            document.getElementById('hud').appendChild(d);
+            els.scoreText = d;
+        }
+        const score = Math.floor(this.game.stats.damageDealt * 10 - this.game.stats.damageTaken * 2);
+        els.scoreText.textContent = `SCORE: ${score}`;
+
         els.hpText.textContent = Math.floor(this.hp);
         els.hpBar.style.width = (this.hp) + "%";
         els.hpBar.style.backgroundColor = this.hp < 30 ? "#f00" : "#0f0";
