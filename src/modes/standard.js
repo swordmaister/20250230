@@ -164,7 +164,7 @@ export class StandardMode {
 
         let x,y,z;
         if (type === 'boss_eater_core') {
-            // Core Logic: High altitude, random X/Z
+            // Core Logic: High altitude, random X/Z (Spec C-Special 1 Core: High altitude circling)
             x = (Math.random()-.5) * (fW - 20);
             z = (Math.random()-.5) * (fD - 20);
             y = 40 + Math.random() * 40; // High (40-80)
@@ -483,6 +483,20 @@ export class StandardMode {
                         else this.game.player.takeDamage(1);
                     }
                 }
+            }
+            else if(e.type === 'boss_eater_core') { // Spec C-Special 1 Core Movement
+                // Hover and Circle logic
+                const time = Date.now() * 0.001;
+                const hoverY = 40 + Math.sin(time + (e.floatOffset||0)) * 5;
+                const targetX = Math.sin(time * 0.5) * 30;
+                const targetZ = Math.cos(time * 0.5) * 30;
+
+                const forceX = (targetX - pos.x) * 100;
+                const forceY = (hoverY - pos.y) * 500; // Strong lift to counter gravity
+                const forceZ = (targetZ - pos.z) * 100;
+
+                e.body.applyForce(new CANNON.Vec3(forceX, forceY, forceZ), pos);
+                e.body.angularVelocity.set(0, 0.5, 0);
             }
             else if(e.type === 'cube' || e.type === 'roller' || e.type === 'jumper' || e.type === 'normal') {
                 const dir = new CANNON.Vec3().copy(targetPos).vsub(pos); dir.normalize();
