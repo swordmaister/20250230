@@ -203,10 +203,10 @@ export class Game {
                 this.targetArrow.rotation.y += dt * 3;
                 // Add pillar effect if not present
                 if(!target.markerPillar) {
-                    const geo = new THREE.CylinderGeometry(0.5, 0.5, 200, 8);
-                    const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.2});
+                    const geo = new THREE.CylinderGeometry(2.0, 2.0, 500, 16);
+                    const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.3, depthTest: false});
                     target.markerPillar = new THREE.Mesh(geo, mat);
-                    target.markerPillar.position.y = 100;
+                    target.markerPillar.position.y = 250;
                     target.mesh.add(target.markerPillar);
                 }
             } else {
@@ -225,7 +225,7 @@ export class Game {
                         e.body.velocity.set(0,0,0);
                     }
                     if (e.type === 'fire' && e.state !== 'wet') { this.spawnText("無効!", e.mesh.position, "#f00"); k.shrinking = false; this.mode.removeKekkai(k); }
-                    else this.mode.killEnemy(e);
+                    else this.mode.onMetsuHit(e);
                 }
                 if (this.waterTank.mesh && kb.intersectsBox(new THREE.Box3().setFromObject(this.waterTank.mesh))) { this.waterTank.hp -= 50; }
             });
