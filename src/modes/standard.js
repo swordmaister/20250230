@@ -82,7 +82,7 @@ export class StandardMode {
                 for(let i=0; i<3; i++) this.spawnEnemy();
                 break;
             case 4: // Puzzle
-                this.game.gameState.missionType='normal'; // Treat as normal clearing but with puzzle logic
+                this.game.gameState.missionType='puzzle';
                 this.game.els.missionText.textContent="WAVE 4: パズル部隊";
                 this.game.gameState.req=1; // 1 Core group
                 this.spawnPuzzleGroup();
@@ -189,6 +189,14 @@ export class StandardMode {
         coreRef.puzzleOrder = order;
         coreRef.currentStep = 0;
         coreRef.lastKillTime = 0; // For simultaneous check
+
+        // Initial Color Indication (Target Color)
+        coreRef.mesh.material.color.setHex(colors[order[0]]);
+
+        // Mark active target minion for visual tracking
+        const firstTarget = this.game.entities.enemies.find(e => e.parentId === coreId && e.puzzleId === order[0]);
+        if (firstTarget) firstTarget.isPuzzleTarget = true;
+
         this.game.spawnText("PUZZLE BOSS: 順序ヲ守レ", new THREE.Vector3(cx, cy+8, cz), "#ff0");
     }
 
@@ -374,6 +382,15 @@ export class StandardMode {
                         core.isInvincible = false;
                         core.mesh.material.color.setHex(0xff0000); // Vulnerable
                         this.game.spawnText("防御解除!", core.mesh.position, "#f00");
+                    } else {
+                        // Update Core Color to Next Target
+                        const nextIdx = core.puzzleOrder[core.currentStep];
+                        const nextColor = [0xff0000, 0x00ff00, 0x0000ff][nextIdx];
+                        core.mesh.material.color.setHex(nextColor);
+
+                        // Mark next target
+                        const nextTarget = this.game.entities.enemies.find(en => en.parentId === core.body.id && en.puzzleId === nextIdx);
+                        if (nextTarget) nextTarget.isPuzzleTarget = true;
                     }
                 } else {
                     // Wrong Order
@@ -399,16 +416,47 @@ export class StandardMode {
             this.spawnItem(e.mesh.position);
         }
 
-        if(this.game.gameState.missionType==='hunt' && e.isTarget) {
-            this.game.gameState.req=0;
-            this.completeWave();
-        }
-        else if(this.game.gameState.req>0 && !isEscape){
-            this.game.gameState.req--;
-            if(this.game.gameState.req<=0) {
+        // Mission specific clear logic
+        const mt = this.game.gameState.missionType;
+
+        if (mt === 'hunt') {
+            if (e.isTarget) {
+                this.game.gameState.req = 0;
+                this.completeWave();
+            } else {
+                this.spawnEnemy(); // Replacement for non-target
+            }
+        } else if (mt === 'boss_eater') {
+            if (e.isBoss) {
+                this.game.gameState.req = 0;
+                this.game.showMsg("BOSS DESTROYED", "#f0f");
+                this.actionGlobalMetsu();
                 this.completeWave();
             }
-        } else { this.spawnEnemy(); }
+            // Do not respawn infinite minions in boss wave, they spawn via initial logic or specific patterns if added
+        } else if (mt === 'puzzle') {
+            // Puzzle clear is handled within the puzzle specific block above
+            // Respawn interference enemies
+            if (!e.type.includes('puzzle')) this.spawnEnemy();
+        } else if (mt === 'boss_composite') {
+            // Composite clear handled via partsCount logic
+            if (!e.isCompositePart && !e.isCompositeCore) this.spawnEnemy();
+        } else {
+            // Normal / Annihilation / Escort / Infinite
+            if (this.game.gameState.req > 0 && !isEscape) {
+                this.game.gameState.req--;
+                if (this.game.gameState.req <= 0) {
+                    this.completeWave();
+                } else {
+                    // Only spawn replacement in infinite or normal if needed?
+                    // Annihilation doesn't respawn endlessly usually (req is match to spawn count)
+                    // Standard logic was to always spawnEnemy() unless annihilation checks
+                    if (mt !== 'annihilation') this.spawnEnemy();
+                }
+            } else {
+                if (mt !== 'annihilation') this.spawnEnemy();
+            }
+        }
     }
 
     failPuzzle(core, e, msg) {
@@ -427,6 +475,10 @@ export class StandardMode {
         const cy = 20;
 
         const colors = [0xff0000, 0x00ff00, 0x0000ff];
+
+        // Reset Core Color
+        core.mesh.material.color.setHex(colors[core.puzzleOrder[0]]);
+
         colors.forEach((c, i) => {
             const angle = (i / 3) * Math.PI * 2;
             const mx = cx + Math.cos(angle) * 12;
@@ -436,7 +488,8 @@ export class StandardMode {
             const mm = new THREE.Mesh(new THREE.BoxGeometry(4,4,4), new THREE.MeshStandardMaterial({color:c}));
             this.game.scene.add(mm);
 
-            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:core.body.id, colorVal:c});
+            const isFirstTarget = (i === core.puzzleOrder[0]);
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:core.body.id, colorVal:c, isPuzzleTarget: isFirstTarget});
         });
     }
 
@@ -651,7 +704,7 @@ export class StandardMode {
                 e.body.applyForce(new CANNON.Vec3(forceX, forceY, forceZ), pos);
                 e.body.angularVelocity.set(0, 0.5, 0);
             }
-            else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus'].includes(e.type)) {
+            else if(['cube', 'roller', 'jumper', 'normal', 'cone', 'torus', 'puzzle_minion'].includes(e.type)) {
                 // Spec 8: Patrol or Chase
                 let dir = new CANNON.Vec3();
 
