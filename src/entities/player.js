@@ -10,6 +10,7 @@ export class Player {
         // Physics Body
         this.body = new CANNON.Body({ mass: 70, shape: new CANNON.Sphere(0.6), material: game.materials.ply, fixedRotation: true, linearDamping: 0.9, collisionFilterGroup:1, collisionFilterMask:1|2|4 });
         this.body.position.set(0, 2, 60);
+        this.body.allowSleep = false; // Prevent player from falling asleep and tunneling
         game.world.addBody(this.body);
 
         this.body.addEventListener('collide', (e)=>{

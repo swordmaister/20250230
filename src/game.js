@@ -205,7 +205,9 @@ export class Game {
 
             // Spec 2: Target Marker (Target Tracking)
             if(this.targetArrow) {
-                const target = this.entities.enemies.find(e => e.isTarget || e.isBoss);
+                // Prioritize Puzzle Target if active, then standard Target/Boss
+                const target = this.entities.enemies.find(e => e.isPuzzleTarget) || this.entities.enemies.find(e => e.isTarget || e.isBoss);
+
                 if(target) {
                     this.targetArrow.visible = true;
                     if(target.mesh) this.targetArrow.position.copy(target.mesh.position).add(new THREE.Vector3(0, 4, 0));
