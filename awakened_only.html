@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>True Kekkai VR - Awakened Only</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#222">
+<style>
+  html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; outline: none; }
+  #error-log { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); color:#ff5555; padding:20px; z-index:9999; white-space:pre-wrap; font-weight:bold; overflow:auto; }
+  #damage-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, transparent 60%, red 100%); opacity: 0; pointer-events: none; z-index: 50; transition: opacity 0.1s; }
+  #jamming-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, rgba(255,0,255,0.2) 0px, rgba(255,0,255,0.2) 2px, transparent 2px, transparent 4px); opacity: 0; pointer-events: none; z-index: 55; mix-blend-mode: screen; transition: opacity 0.2s; }
+  .novr-only { transition: opacity 0.5s; }
+  #hud { position: fixed; top: 16px; left: 16px; pointer-events: none; z-index: 10; }
+  @supports (padding-top: env(safe-area-inset-top)) { #hud { top: calc(env(safe-area-inset-top) + 10px); left: calc(env(safe-area-inset-left) + 16px); } }
+  .hud-box { background: rgba(0, 30, 60, 0.6); padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.4); margin-bottom: 8px; backdrop-filter: blur(4px); min-width: 140px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+  .big-text { font-size: 18px; font-weight: bold; color: #ffeb3b; text-shadow: 1px 1px 2px #000; }
+  .boss-text { font-size: 20px; font-weight: 900; color: #ff0055; text-shadow: 0 0 5px #f00, 2px 2px 0 #000; animation: pulse 1s infinite alternate; }
+  @keyframes pulse { from { opacity: 0.8; transform: scale(1); } to { opacity: 1; transform: scale(1.05); } }
+  .sub-text { font-size: 14px; color: #fff; text-shadow: 1px 1px 1px #000; }
+  .bar-bg { width: 100%; height: 8px; background: #555; margin-top: 4px; border-radius: 4px; overflow: hidden; }
+  .hp-val { width: 100%; height: 100%; background: #0f0; transition: width 0.2s; }
+  .sp-val { width: 100%; height: 100%; background: #00bfff; transition: width 0.1s; }
+  #msgArea { position: fixed; top: 35%; left: 0; width: 100%; text-align: center; pointer-events: none; z-index: 20; }
+  .flash-msg { font-size: 60px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #000, 2px 2px 0 #000; opacity: 0; transition: opacity 0.1s; white-space: pre-wrap; transform: scale(0.8); }
+  #uiLayer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+  #stickZone { position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px; pointer-events: auto; margin-bottom: env(safe-area-inset-bottom); margin-left: env(safe-area-inset-left); }
+  #padArea { position: absolute; bottom: 30px; right: 30px; width: 180px; height: 180px; pointer-events: none; margin-bottom: env(safe-area-inset-bottom); margin-right: env(safe-area-inset-right); }
+  .stick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; position: relative; }
+  .stick-knob { width: 60px; height: 60px; background: #fff; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 4px 10px rgba(0,0,0,0.3); pointer-events: none; }
+  #stickJumpBtn { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; background: rgba(255,0,0,0.5); border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: auto; }
+  .btn { position: absolute; width: 65px; height: 65px; z-index: 10; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); background: rgba(40,50,80,0.8); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; pointer-events: auto; touch-action: manipulation; transition: transform 0.1s; }
+  .btn:active { transform: scale(0.9); background: rgba(60,70,100,0.9); }
+  .btn.disabled { filter: grayscale(100%); opacity: 0.5; pointer-events: none; }
+  #btnUp { top: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #607d8b, #455a64); }
+  #btnDown { bottom: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #9c27b0, #7b1fa2); width: 75px; height: 75px; font-size: 16px; }
+  #btnLeft { top: 50%; left: 0; transform: translateY(-50%); background: linear-gradient(135deg, #f44336, #c62828); }
+  #btnRight { top: 50%; right: 0; transform: translateY(-50%); background: linear-gradient(135deg, #03a9f4, #0288d1); width: 75px; height: 75px; font-size: 18px; }
+  #btnRight.drawing { background: #fff; color: #0288d1; transform: translateY(-50%) scale(1.1); }
+  #modeSwitch { position: absolute; top: -60px; right: 0; width: 140px; height: 40px; background: rgba(0,0,0,0.6); border: 2px solid #fff; border-radius: 20px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; pointer-events:auto; }
+  #modeSwitch.phys { background: linear-gradient(90deg, #FFD700, #FF8C00); color:#000; border-color:#fff; }
+  #modeSwitch.ghost { background: linear-gradient(90deg, #00bfff, #0000ff); color:#fff; border-color:#00ffff; }
+  #centerReticle { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 1px solid rgba(0,0,0,0.5); z-index: 500; }
+  #vrBtn { position: fixed; top: 10px; right: 10px; padding: 12px 24px; background: rgba(0,0,0,0.8); border: 2px solid #0f0; color: #0f0; border-radius: 8px; z-index: 200; pointer-events: auto; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 0 10px #0f0; }
+  #result-screen { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; flex-direction:column; align-items:center; justify-content:center; }
+</style>
+<script>
+  window.onerror = function(msg, url, line) {
+    const box = document.getElementById('error-log'); box.style.display = 'block';
+    box.textContent += "Error: " + msg + "\nLine: " + line + "\n"; return false;
+  };
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="error-log"></div><div id="damage-overlay"></div><div id="jamming-overlay"></div>
+
+<div id="result-screen">
+  <h1 style="color:#fe0; font-size:48px; margin-bottom:20px;">MISSION COMPLETE</h1>
+  <div id="result-stats" style="font-size:18px; line-height:1.6; background:rgba(0,30,60,0.8); padding:30px; border-radius:12px; border:2px solid #fff; min-width:300px;"></div>
+  <button onclick="location.reload()" style="margin-top:30px; padding:15px 40px; font-size:24px; font-weight:bold; cursor:pointer; background:#0f0; border:none; border-radius:8px;">RETURN</button>
+</div>
+
+<div id="hud" class="novr-only">
+  <div class="hud-box">
+    <div class="mission-info" id="missionText">Loading...</div>
+    <span class="big-text" id="waveVal">WAVE 1</span><br>
+    <div id="bossLabel" class="boss-text" style="display:none;">BOSS 結界食い</div>
+    <span class="sub-text">ノルマ: <span id="targetVal" style="color:#f88;">-</span></span>
+  </div>
+  <div class="hud-box">
+    <span class="sub-text">HP: <span id="hpText">100</span></span><div class="bar-bg"><div id="hpBar" class="hp-val"></div></div><div style="height:4px;"></div>
+    <span class="sub-text" style="color:#00bfff;">SP: <span id="spText">100</span></span><div class="bar-bg"><div id="spBar" class="sp-val"></div></div>
+  </div>
+  <div class="hud-box" id="vipBox" style="display:none; border-color:#0f0;"><span class="sub-text" style="color:#0f0;">護衛対象</span><div class="bar-bg"><div id="vipHpBar" class="hp-val" style="background:#0ff;"></div></div></div>
+</div>
+<div id="msgArea"><div id="flashMsg" class="flash-msg"></div></div>
+<div id="centerReticle" class="novr-only"></div>
+<button id="vrBtn">VR START</button>
+<div id="uiLayer" class="novr-only">
+  <div id="stickZone"><div class="stick-base"><div id="stickJumpBtn"></div><div id="stickKnob" class="stick-knob"></div></div></div>
+  <div id="padArea">
+    <div id="modeSwitch" class="ghost">モード: 幽体</div>
+    <div id="btnUp" class="btn">距離<br><span id="distLabel" style="color:#fe0">近</span></div>
+    <div id="btnLeft" class="btn">滅<br><span style="font-size:10px">⇔解</span></div>
+    <div id="btnRight" class="btn">結<br><span style="font-size:10px">Hold</span></div>
+    <div id="btnDown" class="btn">跳</div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+// --- StandardMode Class ---
+class StandardMode {
+    constructor() {
+        this.game = null;
+        this.config = {
+            colors: {
+                sky: 0x87CEEB, ground: 0x667755, kekkai: 0xffff00, ghost: 0x00ffff,
+                drawPhys: 0xffff00, drawGhost: 0x00ffff, highlight: 0xff0044, marker: 0xff0000,
+                wall: 0x888899, building: 0xbbbbcc, concrete: 0xaaaaaa,
+                water: 0x00aaff, fire_ene: 0xff4400, phantom: 0xaa00ff, wet_ene: 0x4444ff,
+                vip: 0x00ffff, giant: 0x880000, target: 0xFFD700, gate: 0x333333
+            },
+            player: { speed: 10.0, jump: 22.0, height: 1.7, maxHp: 100, maxSp: 100 },
+            kekkai: { sensitivity: 150.0, spCostPerSec: 1.0, spRegen: 5.0, metsuCost: 2.0 },
+            dist: { min: 0.0, max: 40.0, default: 6.0 },
+            aimAssist: { baseRadius: 1.5 },
+            field: { width: 120, depth: 160, poolX: -30, poolZ: 10, roofY: 30 }
+        };
+    }
+
+    init() {
+        this.startWave();
+    }
+
+    update(dt, t) {
+        this.updateTank(dt);
+        this.checkEnemies(dt);
+        if (t > this.game.gameState.nextSpawn) {
+            this.spawnEnemy();
+            this.game.gameState.nextSpawn = t + 3000;
+        }
+    }
+
+    cleanupWave() {
+        [...this.game.entities.enemies].forEach(e => this.removeEnemy(e));
+        [...this.game.entities.items].forEach(i => {
+            this.game.safeRemoveMesh(i.mesh);
+            this.game.world.removeBody(i.body);
+        });
+        this.game.entities.items = [];
+        if(this.game.vip) {
+            this.game.world.removeBody(this.game.vip.body);
+            this.game.scene.remove(this.game.vip.mesh);
+            this.game.vip = null;
+        }
+        this.game.gameState.nextSpawn = 0;
+    }
+
+    startWave() {
+        this.cleanupWave();
+        this.game.gameState.enemiesToSpawn = 0;
+        const w = this.game.gameState.wave;
+        switch(w) {
+            case 1:
+                this.game.gameState.missionType='normal';
+                this.game.els.missionText.textContent="WAVE 1: 殲滅任務";
+                this.game.gameState.req=5;
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 2:
+                this.game.gameState.missionType='escort';
+                this.game.els.missionText.textContent="WAVE 2: VIP護衛";
+                this.game.gameState.req=1;
+                this.spawnVIP();
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 3:
+                this.game.gameState.missionType='boss_composite';
+                this.game.els.missionText.textContent="WAVE 3: 大型残骸処理";
+                this.game.gameState.req=1;
+                this.spawnCompositeBoss();
+                for(let i=0; i<3; i++) this.spawnEnemy();
+                break;
+            case 4:
+                this.game.gameState.missionType='puzzle';
+                this.game.els.missionText.textContent="WAVE 4: パズル部隊";
+                this.game.gameState.req=1;
+                this.spawnPuzzleGroup();
+                for(let i=0; i<3; i++) this.spawnEnemy();
+                break;
+            case 5:
+                this.game.gameState.missionType='hunt';
+                this.game.els.missionText.textContent="WAVE 5: ターゲット追跡";
+                this.game.gameState.req=1;
+                this.spawnEnemy('target');
+                for(let i=0; i<5; i++) this.spawnEnemy();
+                break;
+            case 6:
+                this.game.gameState.missionType='boss_eater';
+                this.game.els.missionText.textContent="WAVE 6: 決戦 結界食い";
+                this.game.gameState.req=1;
+                this.spawnEnemy('boss_eater_core');
+                for(let i=0; i<10; i++) this.spawnEnemy('eater');
+                break;
+            default:
+                if (w > 6) {
+                    this.game.showResult();
+                    return;
+                }
+                break;
+        }
+        this.game.showMsg(`WAVE ${w} START`, "#fff");
+    }
+
+    nextWave() {
+        this.game.gameState.wave++;
+        this.startWave();
+    }
+
+    spawnVIP() {
+        const pos = new CANNON.Vec3(20, 30, 0);
+        const b = new CANNON.Body({mass:10, shape:new CANNON.Sphere(1), collisionFilterGroup:1, collisionFilterMask:1|2|4});
+        b.position.copy(pos); b.linearDamping = 0.8; this.game.world.addBody(b);
+        const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1,2), new THREE.MeshPhongMaterial({color:this.config.colors.vip, emissive:0x0044ff}));
+        this.game.scene.add(m);
+        this.game.vip = { body:b, mesh:m, hp:10, state: 'roof', waypoints: [new THREE.Vector3(0, 30, -40), new THREE.Vector3(-3, 0, 35), new THREE.Vector3(0, 0, 75)], wpIndex: 0 };
+        this.game.spawnText("護衛開始: 屋上->校門", new THREE.Vector3(pos.x, pos.y, pos.z), "#0ff");
+    }
+
+    spawnCompositeBoss() {
+        this.game.showMsg("WARNING: FALLING OBJECT", "#f00");
+        const b=new CANNON.Body({mass:0}); b.position.set(0,20,0); b.id=-999;
+        const m=new THREE.Group(); this.game.scene.add(m);
+        this.game.entities.enemies.push({body:b, mesh:m, isCompositeCore:true, partsCount:0});
+        const add=(x,y,z,sx,sy,sz,hp)=>{
+            const pb=new CANNON.Body({mass:50, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            pb.addShape(new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))); pb.position.set(x,60+y,z); this.game.world.addBody(pb);
+            const pm=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color:this.config.colors.giant}));
+            this.game.scene.add(pm);
+            this.game.entities.enemies.push({body:pb, mesh:pm, isCompositePart:true, parentId:b.id, hp});
+            this.game.entities.enemies[this.game.entities.enemies.length-2].partsCount++;
+        };
+        add(0,0,0,6,10,4,20); add(-8,5,0,3,8,3,10); add(8,5,0,3,8,3,10); add(0,8,0,4,4,4,10);
+        this.game.spawnText("解体目標 落下!!", new THREE.Vector3(0,30,0), "#f00");
+    }
+
+    spawnPuzzleGroup() {
+        const cx = (Math.random()-.5)*this.config.field.width;
+        const cz = (Math.random()-.5)*this.config.field.depth;
+        const cy = 20;
+        const coreB = new CANNON.Body({mass:500, shape:new CANNON.Sphere(4.0), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+        coreB.position.set(cx, cy, cz); this.game.world.addBody(coreB);
+        const coreM = new THREE.Mesh(new THREE.DodecahedronGeometry(4.0), new THREE.MeshStandardMaterial({color:0xffff00}));
+        this.game.scene.add(coreM);
+
+        const coreId = coreB.id;
+        const colors = [0xff0000, 0x00ff00, 0x0000ff];
+        this.game.entities.enemies.push({body:coreB, mesh:coreM, type:'puzzle_core', isPuzzleCore:true, hp:50, puzzleParts:[], isInvincible:true});
+        const coreRef = this.game.entities.enemies[this.game.entities.enemies.length-1];
+
+        colors.forEach((c, i) => {
+            const angle = (i / 3) * Math.PI * 2;
+            const mx = cx + Math.cos(angle) * 12; const mz = cz + Math.sin(angle) * 12;
+            const mb = new CANNON.Body({mass:100, shape:new CANNON.Box(new CANNON.Vec3(2,2,2)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(4,4,4), new THREE.MeshStandardMaterial({color:c}));
+            this.game.scene.add(mm);
+            const isFirstTarget = (i === core.puzzleOrder?.[0] || i === 0);
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:coreId, colorVal:c, isPuzzleTarget: isFirstTarget});
+        });
+
+        const order = [0, 1, 2].sort(() => Math.random() - 0.5);
+        coreRef.puzzleOrder = order;
+        coreRef.currentStep = 0;
+        coreRef.lastKillTime = 0;
+        coreRef.mesh.material.color.setHex(colors[order[0]]);
+
+        const minions = this.game.entities.enemies.filter(e => e.parentId === coreId);
+        minions.forEach(m => m.isPuzzleTarget = (m.puzzleId === order[0]));
+
+        this.game.spawnText("PUZZLE BOSS: 順序ヲ守レ", new THREE.Vector3(cx, cy+8, cz), "#ff0");
+    }
+
+    spawnEnemy(forceType=null) {
+        if (this.game.gameState.missionType === 'annihilation' && this.game.gameState.enemiesToSpawn <= 0) return;
+        let cap = 15 + Math.floor(this.game.gameState.wave / 2);
+        if (this.game.gameState.missionType === 'boss_composite') cap = 5;
+        if (this.game.gameState.missionType === 'boss_eater') cap = 20;
+        if (this.game.gameState.missionType === 'boss_composite' && this.game.entities.enemies.filter(e=>!e.isBoss).length >= 5) return;
+        if (this.game.entities.enemies.length >= cap) return;
+
+        const fW=this.config.field.width, fD=this.config.field.depth;
+        let type = 'normal';
+        if(forceType) type = forceType;
+        else if (this.game.gameState.missionType === 'boss_eater') type = 'eater';
+        else if (this.game.gameState.wave === 3) type = 'normal';
+        else {
+            const rand = Math.random();
+            if (rand < 0.2) type = 'fire';
+            else if (rand < 0.4) type = 'phantom';
+            else if (rand < 0.5) type = 'cube';
+            else if (rand < 0.6) type = 'roller';
+            else if (rand < 0.7) type = 'jumper';
+            else if (rand < 0.8) type = 'cone';
+            else if (rand < 0.9) type = 'torus';
+            else type = 'normal';
+        }
+
+        if (type === 'puzzle') { this.spawnPuzzleGroup(); return; }
+
+        let x,y,z;
+        if (type === 'boss_eater_core') {
+            x = (Math.random()-.5) * (fW - 20); z = (Math.random()-.5) * (fD - 20); y = 40 + Math.random() * 40;
+            this.game.showMsg("結界食い(核) 出現！ 上空を捜索せよ！", "#f0f");
+        } else {
+            x = (Math.random()-.5)*fW; z = (Math.random()-.5)*fD; y = 10 + Math.random()*20;
+        }
+
+        const hpMult = 1 + (this.game.gameState.wave-1)*0.2;
+        let sz = 0.8 + Math.random()*0.5;
+        let col = new THREE.Color().setHSL(Math.random(), 0.7, 0.5);
+        let geo;
+
+        if(type==='boss_eater_core') { sz = 2.5; col.setHex(0xFF0055); geo = new THREE.IcosahedronGeometry(sz, 2); }
+        else if(type==='target') { col.setHex(this.config.colors.target); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='fire') { col.setHex(this.config.colors.fire_ene); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='phantom') { col.setHex(this.config.colors.phantom); geo=new THREE.IcosahedronGeometry(sz,1); }
+        else if(type==='eater') { col.setHex(0xaa2222); geo=new THREE.OctahedronGeometry(sz,0); }
+        else {
+            if (type==='cube') geo = new THREE.BoxGeometry(sz,sz,sz);
+            else if (type==='roller') geo = new THREE.TetrahedronGeometry(sz);
+            else if (type==='jumper') geo = new THREE.TorusGeometry(sz*0.6, sz*0.2, 8, 16);
+            else if (type==='cone') geo = new THREE.ConeGeometry(sz*0.6, sz*1.5, 8);
+            else if (type==='torus') geo = new THREE.TorusKnotGeometry(sz*0.4, sz*0.1, 64, 8);
+            else geo = new THREE.IcosahedronGeometry(sz,0);
+        }
+
+        const mask = (type === 'fire') ? 1|4 : 1|2|4;
+        const mass = (type === 'boss_eater_core') ? 500 : 15;
+        const b=new CANNON.Body({mass:mass, shape:(type==='cube'?new CANNON.Box(new CANNON.Vec3(sz/2,sz/2,sz/2)):new CANNON.Sphere(sz)), material:this.game.materials.ene, linearDamping:0.4, collisionFilterGroup:4, collisionFilterMask:mask});
+        b.position.set(x,y,z);
+        if(type === 'boss_eater_core') b.linearDamping = 0.9;
+        this.game.world.addBody(b);
+
+        let mat;
+        if (type === 'boss_eater_core') { mat = new THREE.MeshStandardMaterial({color: 0xFF0055, emissive: 0x550022, roughness: 0.2}); }
+        else if (type === 'phantom') { mat = new THREE.MeshStandardMaterial({color: 0xffffff, transparent: true, opacity: 0.05, roughness: 0.0}); }
+        else if (type === 'fire') { mat = new THREE.MeshStandardMaterial({color: col, emissive: 0xffaa00, emissiveIntensity: 1.0}); }
+        else { mat = new THREE.MeshStandardMaterial({color: col}); }
+        const m=new THREE.Mesh(geo, mat);
+
+        if (type === 'fire') {
+            const pGeo = new THREE.BufferGeometry(); const pPos = new Float32Array(60); for(let i=0;i<60;i++) pPos[i]=(Math.random()-0.5)*1.5;
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            m.add(new THREE.Points(pGeo, new THREE.PointsMaterial({color:0xffaa00, size:0.3, transparent:true, opacity:0.8})));
+        }
+        this.game.scene.add(m);
+
+        let hpVal = (type==='fire'?5:3)*hpMult;
+        if(type === 'boss_eater_core') hpVal = 50 * hpMult;
+
+        const isBoss = (type === 'boss_eater_core');
+        const initState = (['normal','roller','jumper', 'cone', 'torus', 'puzzle_minion'].includes(type) && Math.random()<0.5) ? 'patrol' : 'chase';
+
+        this.game.entities.enemies.push({
+            body:b, mesh:m, type, hp: hpVal, hpMax: hpVal,
+            state: initState, wetTimer:0,
+            isTarget:(type==='target'),
+            isBoss: isBoss,
+            floatOffset: Math.random()*100
+        });
+        if (this.game.gameState.missionType==='annihilation') this.game.gameState.enemiesToSpawn--;
+    }
+
+    completeWave() {
+        this.game.showMsg(`WAVE ${this.game.gameState.wave} CLEAR`, "#fe0");
+        [...this.game.entities.enemies].forEach(en => this.removeEnemy(en));
+        if (this.game.vip) {
+            this.game.world.removeBody(this.game.vip.body);
+            this.game.scene.remove(this.game.vip.mesh);
+            this.game.vip = null;
+        }
+        setTimeout(() => this.nextWave(), 2000);
+    }
+
+    onMetsuHit(e) {
+        if (!e) return;
+        if (e.isBoss || e.type === 'puzzle_minion' || e.type === 'puzzle_core' || e.isCompositePart || e.type === 'eater') {
+            e.hp = (e.hp || 1) - 10;
+            this.game.spawnText("HIT!", e.mesh.position, "#f00");
+            if (e.body) {
+                const push = e.body.position.vsub(this.game.player.body.position); push.normalize();
+                e.body.applyImpulse(push.scale(50), e.body.position);
+            }
+            if (e.hp <= 0) {
+                this.killEnemy(e);
+            } else {
+                e.mesh.material.emissive.setHex(0xff0000);
+                setTimeout(() => { if(e.mesh) e.mesh.material.emissive.setHex(0x000000); }, 100);
+            }
+        } else {
+            this.killEnemy(e);
+        }
+    }
+
+    killEnemy(e, isEscape=false) {
+        if(!this.game.entities.enemies.includes(e))return;
+        if(!isEscape) this.game.stats.damageDealt += e.hpMax || 1;
+
+        if(e.isCompositePart) {
+            this.game.spawnParticle(e.mesh.position,25,0xffaa00); this.removeEnemy(e);
+            const p=this.game.entities.enemies.find(en=>en.body.id===e.parentId); if(p){p.partsCount--; if(p.partsCount<=0) { this.removeEnemy(p); this.game.gameState.req=0; this.completeWave(); }}
+            return;
+        }
+
+        if(e.type === 'puzzle_minion') {
+            const core = this.game.entities.enemies.find(en => en.body.id === e.parentId);
+            if(core) {
+                const now = Date.now();
+                const timeDiff = now - (core.lastKillTime || 0);
+                core.lastKillTime = now;
+                const requiredIndex = core.puzzleOrder[core.currentStep];
+
+                if (timeDiff < 500) {
+                     this.failPuzzle(core, e, "同時撃破不可!");
+                     return;
+                }
+
+                if (e.puzzleId === requiredIndex) {
+                    this.game.spawnText("OK!", e.mesh.position, "#0f0");
+                    this.game.spawnParticle(e.mesh.position, 15, e.colorVal);
+                    this.removeEnemy(e);
+                    core.currentStep++;
+                    if (core.currentStep >= 3) {
+                        core.isInvincible = false;
+                        core.mesh.material.color.setHex(0xff0000);
+                        this.game.spawnText("防御解除!", core.mesh.position, "#f00");
+                    } else {
+                        const nextIdx = core.puzzleOrder[core.currentStep];
+                        const nextColor = [0xff0000, 0x00ff00, 0x0000ff][nextIdx];
+                        core.mesh.material.color.setHex(nextColor);
+                        const nextTarget = this.game.entities.enemies.find(en => en.parentId === core.body.id && en.puzzleId === nextIdx);
+                        if (nextTarget) nextTarget.isPuzzleTarget = true;
+                    }
+                } else {
+                    this.failPuzzle(core, e, "順序不正!");
+                }
+            } else {
+                this.removeEnemy(e);
+            }
+            return;
+        }
+        if(e.type === 'puzzle_core') {
+            if(e.isInvincible && !isEscape) {
+                this.game.spawnText("無敵", e.mesh.position, "#888");
+                return;
+            }
+        }
+
+        this.removeEnemy(e);
+        this.game.spawnParticle(e.mesh.position, 20, e.type==='fire'?0xff4400:0xffffff);
+        if (Math.random() < 0.3) {
+            this.spawnItem(e.mesh.position);
+        }
+
+        const mt = this.game.gameState.missionType;
+        if (mt === 'hunt') {
+            if (e.isTarget) {
+                this.game.gameState.req = 0;
+                this.completeWave();
+            } else {
+                this.spawnEnemy();
+            }
+        } else if (mt === 'boss_eater') {
+            if (e.isBoss) {
+                this.game.gameState.req = 0;
+                this.game.showMsg("BOSS DESTROYED", "#f0f");
+                this.actionGlobalMetsu();
+                this.completeWave();
+            }
+        } else if (mt === 'puzzle') {
+            if (!e.type.includes('puzzle')) this.spawnEnemy();
+        } else if (mt === 'boss_composite') {
+            if (!e.isCompositePart && !e.isCompositeCore) this.spawnEnemy();
+        } else {
+            if (this.game.gameState.req > 0 && !isEscape) {
+                this.game.gameState.req--;
+                if (this.game.gameState.req <= 0) {
+                    this.completeWave();
+                } else {
+                    if (mt !== 'annihilation') this.spawnEnemy();
+                }
+            } else {
+                if (mt !== 'annihilation') this.spawnEnemy();
+            }
+        }
+    }
+
+    failPuzzle(core, e, msg) {
+        this.game.spawnText(msg + " 全復活", e.mesh.position, "#f00");
+        this.game.spawnParticle(e.mesh.position, 20, 0x555555);
+        [...this.game.entities.enemies].forEach(en => {
+            if(en.type === 'puzzle_minion' && en.parentId === core.body.id) this.removeEnemy(en);
+        });
+        core.currentStep = 0;
+        const cx = core.body.position.x;
+        const cz = core.body.position.z;
+        const cy = 20;
+        const colors = [0xff0000, 0x00ff00, 0x0000ff];
+        core.mesh.material.color.setHex(colors[core.puzzleOrder[0]]);
+
+        colors.forEach((c, i) => {
+            const angle = (i / 3) * Math.PI * 2;
+            const mx = cx + Math.cos(angle) * 12; const mz = cz + Math.sin(angle) * 12;
+            const mb = new CANNON.Body({mass:100, shape:new CANNON.Box(new CANNON.Vec3(2,2,2)), material:this.game.materials.ene, collisionFilterGroup:4, collisionFilterMask:1|2|4});
+            mb.position.set(mx, cy, mz); this.game.world.addBody(mb);
+            const mm = new THREE.Mesh(new THREE.BoxGeometry(4,4,4), new THREE.MeshStandardMaterial({color:c}));
+            this.game.scene.add(mm);
+            const isFirstTarget = (i === core.puzzleOrder[0]);
+            this.game.entities.enemies.push({body:mb, mesh:mm, type:'puzzle_minion', hp:15, puzzleId:i, parentId:core.body.id, colorVal:c, isPuzzleTarget: isFirstTarget});
+        });
+    }
+
+    removeEnemy(e) {
+        if(!this.game.entities.enemies.includes(e)) return;
+        this.game.entities.enemies = this.game.entities.enemies.filter(o=>o!==e);
+        this.game.safeRemoveMesh(e.mesh);
+        this.game.world.removeBody(e.body);
+    }
+
+    removeKekkai(k) {
+        if (this.game.currentTargetKekkai === k) this.game.currentTargetKekkai = null;
+        this.game.safeRemoveMesh(k.mesh);
+        if (k.body) this.game.world.removeBody(k.body);
+        this.game.entities.kekkai = this.game.entities.kekkai.filter(o => o !== k);
+    }
+
+    setupEnvironment(scene, world, mat) {
+        const CFG = this.config;
+        const sun=new THREE.DirectionalLight(0xffffee,1.2); sun.position.set(-50,100,50); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+        scene.add(sun); scene.add(new THREE.AmbientLight(0x333344,0.6));
+
+        const gGeo=new THREE.PlaneGeometry(CFG.field.width+40,CFG.field.depth+40); const gMat=new THREE.MeshStandardMaterial({color:CFG.colors.ground,roughness:0.9});
+        const groundMesh = new THREE.Mesh(gGeo,gMat); groundMesh.rotation.x=-Math.PI/2; groundMesh.receiveShadow=true; scene.add(groundMesh);
+        const gBody=new CANNON.Body({mass:0,material:mat}); gBody.addShape(new CANNON.Plane()); gBody.quaternion.setFromEuler(-Math.PI/2,0,0); world.addBody(gBody);
+        this.game.groundMesh = groundMesh;
+        sun.intensity = 1.8;
+
+        const bX=20, bZ=0, bW=40, bD=80, bH=CFG.field.roofY;
+        const createBox=(x,y,z,w,h,d,col,tr=false,op=1,rotY=0)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:col,transparent:tr,opacity:op})); m.position.set(x,y,z); m.rotation.y=rotY; m.castShadow=!tr; m.receiveShadow=true; scene.add(m); const b=new CANNON.Body({mass:0,material:mat}); b.addShape(new CANNON.Box(new CANNON.Vec3(w/2,h/2,d/2))); b.position.copy(m.position); b.quaternion.copy(m.quaternion); world.addBody(b); return m; };
+
+        createBox(bX, bH/2, bZ, bW, bH, bD, CFG.colors.building);
+        createBox(bX, bH-1, bZ, bW, 2, bD, CFG.colors.concrete);
+        for(let y=5; y<bH; y+=7) {
+            for(let z=-bD/2+5; z<bD/2; z+=10) {
+                const win = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({color: 0x88ccff, transparent:true, opacity:0.6}));
+                win.position.set(bX-bW/2-0.1, y, z); win.rotation.y = -Math.PI/2; scene.add(win); this.game.windows.push(win);
+            }
+        }
+
+        const tRad=5, tH=8;
+        const tankM = new THREE.Mesh(new THREE.CylinderGeometry(tRad, tRad, tH, 16), new THREE.MeshStandardMaterial({color: 0xcccccc}));
+        tankM.position.set(bX, bH+tH/2, bZ); scene.add(tankM);
+        const tankB = new CANNON.Body({mass:0, material:mat, collisionFilterGroup:2, collisionFilterMask:1|4});
+        tankB.addShape(new CANNON.Cylinder(tRad, tRad, tH, 16)); tankB.position.copy(tankM.position); world.addBody(tankB);
+        this.game.waterTank.mesh = tankM; this.game.waterTank.body = tankB; this.game.waterTank.origPos = tankM.position.clone();
+
+        const pW=20, pD=40, pX=CFG.field.poolX, pZ=CFG.field.poolZ;
+        const water = new THREE.Mesh(new THREE.PlaneGeometry(pW, pD), new THREE.MeshBasicMaterial({color:CFG.colors.water, transparent:true, opacity:0.6}));
+        water.rotation.x = -Math.PI/2; water.position.set(pX, 0.2, pZ); scene.add(water);
+        createBox(pX-pW/2-1, 1, pZ, 2, 2, pD, 0x888888); createBox(pX+pW/2+1, 1, pZ, 2, 2, pD, 0x888888);
+        createBox(pX, 1, pZ-pD/2-1, pW+4, 2, 2, 0x888888); createBox(pX, 1, pZ+pD/2+1, pW+4, 2, 2, 0x888888);
+
+        const slW=6, slL=80; const slAng = Math.atan2(bH, slL); const slLen = Math.sqrt(bH*bH + slL*slL);
+        const slX = -3; const slY = bH/2; const slZ = bZ - 5;
+        const slB=new CANNON.Body({mass:0,material:mat}); slB.addShape(new CANNON.Box(new CANNON.Vec3(slW/2, 0.5, slLen/2)));
+        slB.position.set(slX, slY, slZ); slB.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), slAng); world.addBody(slB);
+        const slM=new THREE.Mesh(new THREE.BoxGeometry(slW, 1, slLen), new THREE.MeshStandardMaterial({color:CFG.colors.concrete}));
+        slM.position.copy(slB.position); slM.quaternion.copy(slB.quaternion); scene.add(slM);
+        const railL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, slLen), new THREE.MeshStandardMaterial({color:CFG.colors.wall}));
+        railL.position.set(slX-slW/2+0.1, slY+1, slZ); railL.quaternion.copy(slB.quaternion); scene.add(railL);
+
+        const FW=CFG.field.width, FD=CFG.field.depth; const gateW = 24; const gZ = FD/2;
+        createBox(-FW/2, 4, 0, 2, 8, FD, CFG.colors.wall); createBox(FW/2, 4, 0, 2, 8, FD, CFG.colors.wall); createBox(0, 4, -FD/2, FW, 8, 2, CFG.colors.wall);
+        const backWallW = (FW - gateW) / 2; createBox(-FW/2 + backWallW/2, 4, gZ, backWallW, 8, 2, CFG.colors.wall); createBox(FW/2 - backWallW/2, 4, gZ, backWallW, 8, 2, CFG.colors.wall);
+
+        this.game.gatePos = new THREE.Vector3(0, 0, gZ);
+        const gateGroup = new THREE.Group(); gateGroup.position.set(0, 4, gZ); scene.add(gateGroup);
+        const frameMat = new THREE.MeshStandardMaterial({color:0x222222});
+        const fL = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 1), frameMat); fL.position.set(-gateW/2, 0, 0); gateGroup.add(fL);
+        const fR = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 1), frameMat); fR.position.set(gateW/2, 0, 0); gateGroup.add(fR);
+        const fT = new THREE.Mesh(new THREE.BoxGeometry(gateW, 1, 1), frameMat); fT.position.set(0, 3.5, 0); gateGroup.add(fT);
+        const barMat = new THREE.MeshStandardMaterial({color:0x444444});
+        for(let x=-gateW/2+1; x<=gateW/2-1; x+=0.8) { const bar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 8, 0.15), barMat); bar.position.set(x, 0, 0); gateGroup.add(bar); }
+        for(let y=-3.5; y<=3.5; y+=1.0) { const bar = new THREE.Mesh(new THREE.BoxGeometry(gateW, 0.15, 0.15), barMat); bar.position.set(0, y, 0); gateGroup.add(bar); }
+        const gateB = new CANNON.Body({mass:0, material:mat}); gateB.addShape(new CANNON.Box(new CANNON.Vec3(gateW/2, 4, 0.5))); gateB.position.set(0, 4, gZ); world.addBody(gateB);
+    }
+}
+
+// --- AwakenedMode Class ---
+class AwakenedMode extends StandardMode {
+    constructor() {
+        super();
+        this.isAwakened = true;
+        this.config = {
+            colors: {
+                sky: 0x050011, ground: 0x221133, kekkai: 0xaa00ff, ghost: 0xff00ff,
+                drawPhys: 0xaa00ff, drawGhost: 0xff00ff, highlight: 0x00ffff, marker: 0xff0000,
+                wall: 0x444455, building: 0x666677, concrete: 0x888899,
+                water: 0x00aaff, fire_ene: 0xff4400, phantom: 0xaa00ff, wet_ene: 0x4444ff,
+                vip: 0x00ffff, giant: 0x880000, target: 0xFFD700, gate: 0x222222
+            },
+            player: { speed: 20.0, jump: 30.0, height: 1.7, maxHp: 100, maxSp: 200 },
+            kekkai: { sensitivity: 150.0, spCostPerSec: 1.0, spRegen: 15.0, metsuCost: 2.0 },
+            dist: { min: 0.0, max: 40.0, default: 6.0 },
+            aimAssist: { baseRadius: 1.5 },
+            field: { width: 120, depth: 160, poolX: -30, poolZ: 10, roofY: 30 }
+        };
+        this.smartAimActive = true;
+        this.allowMultiJump = true;
+        this.jumpCount = 0;
+    }
+
+    init() {
+        super.init();
+        this.game.showMsg("AWAKENED MODE START", "#d0f");
+    }
+
+    canMultiJump(player) {
+        if(this.jumpCount < 2) {
+             player.body.velocity.y = this.config.player.jump;
+             this.jumpCount++;
+             this.game.spawnParticle(player.body.position, 10, 0x00ffff);
+             return true;
+        }
+        return false;
+    }
+
+    update(dt, t) {
+        super.update(dt, t);
+
+        if(Math.abs(this.game.player.body.velocity.y) < 0.1) {
+            this.jumpCount = 0;
+        }
+
+        if (this.game.player.zekkaiActive) {
+            const zPos = this.game.player.body.position;
+            const range = 3.0;
+            this.game.entities.enemies.forEach(e => {
+                const dist = e.body.position.distanceTo(zPos);
+                if (dist < range) {
+                    const pushDir = e.body.position.vsub(zPos); pushDir.normalize();
+                    e.body.applyImpulse(pushDir.scale(50), e.body.position);
+                    this.killEnemy(e);
+                    this.game.spawnParticle(e.mesh.position, 5, 0xaa00ff);
+                }
+            });
+        }
+    }
+
+    performMetsu(t) {
+        if(!t || t.shrinking) return;
+        super.performMetsu(t);
+
+        const range = 15.0;
+        this.game.entities.kekkai.forEach(k => {
+            if (k !== t && !k.shrinking) {
+                const dist = k.mesh.position.distanceTo(t.mesh.position);
+                if (dist < range) {
+                    setTimeout(() => { if (!k.shrinking) this.performMetsu(k); }, 100 + dist * 20);
+                }
+            }
+        });
+
+        const blastRadius = 10.0;
+        this.game.entities.enemies.forEach(e => {
+            const dist = e.body.position.distanceTo(t.mesh.position);
+            if (dist < blastRadius) {
+                this.killEnemy(e);
+            }
+        });
+    }
+}
+
+// --- Player Class ---
+class Player {
+    constructor(game) {
+        this.game = game;
+        this.config = game.mode.config.player;
+        this.body = new CANNON.Body({ mass: 70, shape: new CANNON.Sphere(0.6), material: game.materials.ply, fixedRotation: true, linearDamping: 0.9, collisionFilterGroup:1, collisionFilterMask:1|2|4 });
+        this.body.position.set(0, 2, 60);
+        this.body.allowSleep = false;
+        game.world.addBody(this.body);
+        this.body.addEventListener('collide', (e)=>{
+            if(e.body && e.body.material && e.body.material.name==='ene') {
+                const v = e.contact.getImpactVelocityAlongNormal();
+                if(Math.abs(v)>2) {
+                    this.takeDamage(Math.floor(Math.abs(v)*2));
+                    const n = new CANNON.Vec3(); e.contact.ni.negate(n);
+                    this.body.applyImpulse(n.scale(50*Math.abs(v)), this.body.position);
+                }
+            }
+        });
+        this.hp = this.config.maxHp;
+        this.sp = this.config.maxSp;
+        this.damageCooldown = 0;
+        this.drawCooldown = 0;
+        this.currentDist = game.mode.config.dist.default;
+        this.isPhysMode = false;
+        this.isFocusing = false;
+        this.input = { x: 0, y: 0 };
+        this.camAngle = { yaw: 0, pitch: 0 };
+        this.raycaster = new THREE.Raycaster();
+        this.controllers = [];
+        this.controllerGrips = [];
+        this.vrState = { left: { drawing:false, startHandPos:new THREE.Vector3(), startOrigin:new THREE.Vector3(), startDir:new THREE.Vector3(), mesh:null, body:null, triggerHeld:false }, right: { drawing:false, startHandPos:new THREE.Vector3(), startOrigin:new THREE.Vector3(), startDir:new THREE.Vector3(), mesh:null, triggerHeld:false, bBtnHeld:false, lastDistZ:0 } };
+        this.snapTurnAngle = 0;
+        this.zekkaiActive = false;
+        this.zekkaiMesh = null;
+        this.zekkaiBody = null;
+    }
+
+    update(dt) {
+        const prevPos = this.game.playerGroup.position.clone();
+        this.game.playerGroup.position.copy(this.body.position).add(new THREE.Vector3(0, this.config.height, 0));
+        if (!this.game.gameState.isGameOver) {
+            const dist = this.game.playerGroup.position.distanceTo(prevPos);
+            if (dist < 10) this.game.stats.distance += dist;
+        }
+        this.raycaster.set(this.body.position, new THREE.Vector3(0,-1,0));
+        const hits = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k=>k.mesh));
+        this.speedMult = (hits.length > 0 && hits[0].distance < 1.5) ? 1.8 : 1.0;
+
+        if (this.game.renderer.xr.isPresenting) { this.handleVRInput(dt); } else { this.handleMobileInput(dt); }
+        if (this.damageCooldown > 0) this.damageCooldown -= dt;
+        if (this.drawCooldown > 0) {
+            this.drawCooldown -= dt;
+            if (this.drawCooldown <= 0) this.game.showMsg("再構成可能", "#0ff");
+        }
+        this.sp = Math.min(this.config.maxSp, this.sp + this.game.mode.config.kekkai.spRegen * dt);
+        const maintainCost = this.game.entities.kekkai.length * 1.0;
+        this.sp -= maintainCost * dt;
+        if (this.zekkaiActive) {
+            this.sp -= 20.0 * dt;
+            if (this.sp <= 0) this.toggleZekkai(false);
+            if (this.zekkaiMesh) this.zekkaiMesh.position.copy(this.body.position);
+            if (this.zekkaiBody) this.zekkaiBody.position.copy(this.body.position);
+        }
+        if (this.sp <= 0) {
+             this.sp = 0;
+             if (this.game.entities.kekkai.length > 0) {
+                 this.game.mode.actionGlobalKai();
+                 this.game.showMsg("霊力枯渇!!", "#f00");
+             }
+        }
+        this.updateHUD();
+        this.updateAimMarker();
+    }
+
+    handleVRInput(dt) {
+        const session = this.game.renderer.xr.getSession(); if(!session) return;
+        const cam = this.game.renderer.xr.getCamera(); cam.updateMatrixWorld(true);
+        const _vecDir = new THREE.Vector3(); const _vecUp = new THREE.Vector3(0,1,0); const _vecRight = new THREE.Vector3();
+        this.game.camera.getWorldDirection(_vecDir); _vecDir.y = 0; _vecDir.normalize();
+        _vecRight.crossVectors(_vecDir, _vecUp).normalize().negate();
+
+        for(const src of session.inputSources){
+            if(!src.gamepad) continue;
+            const gp = src.gamepad;
+            const idx = (src.handedness === 'left') ? 0 : 1;
+            if(!this.controllers[idx]) continue;
+            const ctrl = this.controllers[idx];
+
+            if(src.handedness === 'left') {
+                const stickX = gp.axes[2]; const stickY = gp.axes[3];
+                if(Math.abs(stickX) > 0.1 || Math.abs(stickY) > 0.1) {
+                    const v = _vecDir.clone().multiplyScalar(-stickY).add(_vecRight.clone().multiplyScalar(-stickX));
+                    this.body.velocity.x = v.x * this.config.speed;
+                    this.body.velocity.z = v.z * this.config.speed;
+                } else {
+                    this.body.velocity.x = 0; this.body.velocity.z = 0;
+                }
+                if(gp.buttons[0].pressed){ if(!this.vrState.left.triggerHeld){this.game.mode.actionKai(); this.vrState.left.triggerHeld=true;} } else this.vrState.left.triggerHeld=false;
+                if (gp.buttons[4] && gp.buttons[4].pressed && this.game.mode.isAwakened) {
+                    if (!this.zekkaiDebounce) { this.toggleZekkai(); this.zekkaiDebounce = true; }
+                } else { this.zekkaiDebounce = false; }
+                const grip = gp.buttons[1].pressed;
+                if (this.drawCooldown > 0 && grip) {}
+                else if (grip) {
+                    if (!this.vrState.left.drawing) { this.startVRDraw('left', ctrl.position, _vecDir); } else { this.updateVRDraw('left', ctrl.position, true); }
+                } else if (this.vrState.left.drawing) { this.finishVRDraw('left', false); }
+            } else {
+                if (Math.abs(gp.axes[2]) > 0.5) {
+                    if (!this.snapTurnHeld) {
+                        this.snapTurnAngle -= Math.sign(gp.axes[2]) * (Math.PI / 4);
+                        this.snapTurnHeld = true;
+                    }
+                } else { this.snapTurnHeld = false; }
+                if(gp.buttons[4].pressed) this.jump();
+                if(gp.buttons[5].pressed) {
+                    if(!this.vrState.right.bBtnHeld) { this.vrState.right.bBtnHeld=true; this.vrState.right.lastDistZ = ctrl.position.z; }
+                    const dz = (this.vrState.right.lastDistZ - ctrl.position.z) * 20;
+                    this.currentDist = Math.max(0, Math.min(40, this.currentDist + dz));
+                    this.vrState.right.lastDistZ = ctrl.position.z;
+                } else this.vrState.right.bBtnHeld = false;
+                if(gp.buttons[0].pressed) {
+                    if(!this.vrState.right.triggerHeld) { this.game.mode.actionMetsu(); this.vrState.right.triggerHeld=true; }
+                } else this.vrState.right.triggerHeld = false;
+                const grip = gp.buttons[1].pressed;
+                if (this.drawCooldown > 0 && grip) {}
+                else if (grip) {
+                    if (!this.vrState.right.drawing) { this.startVRDraw('right', ctrl.position, _vecDir); } else { this.updateVRDraw('right', ctrl.position, false); }
+                } else if (this.vrState.right.drawing) { this.finishVRDraw('right', true); }
+            }
+        }
+        this.game.playerGroup.rotation.y = this.snapTurnAngle;
+    }
+
+    startVRDraw(hand, pos, dir) {
+        const state = this.vrState[hand];
+        state.drawing = true;
+        state.startHandPos.copy(pos);
+        state.startOrigin.copy(this.game.aimMarker.position);
+        state.startDir.copy(dir);
+        const g = new THREE.BoxGeometry(1,1,1);
+        const col = (hand==='left') ? 0xffff00 : 0x00ffff;
+        const m = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.5});
+        state.mesh = new THREE.Mesh(g, m);
+        state.mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({color:0xffffff})));
+        this.game.scene.add(state.mesh);
+        if (hand==='left') {
+             state.body = new CANNON.Body({mass:0, collisionFilterGroup:2, collisionFilterMask:1|2|4});
+             state.body.addShape(new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)));
+             state.body.position.copy(state.startOrigin);
+             this.game.world.addBody(state.body);
+        }
+    }
+
+    updateVRDraw(hand, pos, isPhys) {
+        const state = this.vrState[hand];
+        const sens = this.game.mode.config.kekkai.sensitivity * (isPhys ? 1.0 : 1.5);
+        const dx = Math.abs(pos.x - state.startHandPos.x);
+        const dy = Math.abs(pos.y - state.startHandPos.y);
+        const dz = Math.abs(pos.z - state.startHandPos.z);
+        const hMove = Math.sqrt(dx*dx + dz*dz);
+        const sx = 1.0 + hMove * sens; const sy = 1.0 + dy * sens; const sz = 1.0 + hMove * sens;
+        const shiftAmount = (sz - 1.0) * 0.45;
+        const shiftVec = state.startDir.clone().multiplyScalar(shiftAmount);
+        state.mesh.position.copy(state.startOrigin).add(shiftVec);
+        state.mesh.scale.set(sx, sy, sz);
+        if (state.body) {
+            this.game.world.removeBody(state.body);
+            const nb = new CANNON.Body({mass:0, collisionFilterGroup:2, collisionFilterMask:1|2|4});
+            nb.position.copy(state.mesh.position);
+            nb.addShape(new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2)));
+            this.game.world.addBody(nb);
+            state.body = nb;
+        }
+    }
+
+    finishVRDraw(hand, isGhost) {
+        const state = this.vrState[hand];
+        this.game.mode.createKekkai(state.mesh.position, state.mesh.scale, 0, isGhost);
+        this.game.safeRemoveMesh(state.mesh);
+        if(state.body) this.game.world.removeBody(state.body);
+        state.drawing = false; state.mesh = null; state.body = null;
+    }
+
+    handleMobileInput(dt) {
+        const fwd = new THREE.Vector3(this.input.x, 0, this.input.y).applyAxisAngle(new THREE.Vector3(0,1,0), this.camAngle.yaw);
+        this.body.velocity.x = fwd.x * this.config.speed * (this.speedMult || 1.0);
+        this.body.velocity.z = fwd.z * this.config.speed * (this.speedMult || 1.0);
+        this.game.playerGroup.rotation.y = this.camAngle.yaw;
+        this.game.camera.rotation.x = this.camAngle.pitch;
+    }
+
+    setupMobileControls() {
+        const stick = document.getElementById('stickZone');
+        const knob = document.getElementById('stickKnob');
+        const stickStart = {x:0, y:0}; let stickId = null;
+        const resetStick = () => { stickId=null; this.input.x=0; this.input.y=0; knob.style.transform='translate(-50%,-50%)'; };
+        stick.addEventListener('touchstart',e=>{e.preventDefault(); if(stickId)return; const t=e.changedTouches[0]; stickId=t.identifier; const r=stick.getBoundingClientRect(); stickStart.x=r.left+r.width/2; stickStart.y=r.top+r.height/2; handleStick(t.clientX,t.clientY); },{passive:false});
+        stick.addEventListener('touchmove',e=>{e.preventDefault(); if(stickId===null)return; for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId)handleStick(e.changedTouches[i].clientX,e.changedTouches[i].clientY); },{passive:false});
+        window.addEventListener('touchend',e=>{for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId){ resetStick(); }});
+        window.addEventListener('touchcancel',e=>{for(let i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===stickId) resetStick();});
+        const handleStick = (cx,cy) => { let dx=cx-stickStart.x, dy=cy-stickStart.y; const d=Math.hypot(dx,dy), max=(stick.offsetWidth/2)*0.8; if(d>max){dx*=max/d;dy*=max/d;} this.input.x=dx/max; this.input.y=dy/max; knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; };
+
+        let lookId = null; let lastLook = {x:0, y:0};
+        this.game.renderer.domElement.addEventListener('touchstart', e => { e.preventDefault(); for(let i=0; i<e.changedTouches.length; i++) { if(!lookId && e.changedTouches[i].target === this.game.renderer.domElement) { lookId = e.changedTouches[i].identifier; lastLook = {x:e.changedTouches[i].clientX, y:e.changedTouches[i].clientY}; } } }, {passive:false});
+        window.addEventListener('touchmove', e => { if(!lookId) return; for(let i=0; i<e.changedTouches.length; i++) { if(e.changedTouches[i].identifier === lookId) { const t = e.changedTouches[i]; this.camAngle.yaw -= (t.clientX - lastLook.x) * 0.004; this.camAngle.pitch -= (t.clientY - lastLook.y) * 0.004; this.camAngle.pitch = Math.max(-1.5, Math.min(1.5, this.camAngle.pitch)); lastLook = {x:t.clientX, y:t.clientY}; } } }, {passive:false});
+        const endLook = (e) => { for(let i=0; i<e.changedTouches.length; i++) if(e.changedTouches[i].identifier===lookId) lookId=null; };
+        window.addEventListener('touchend', endLook); window.addEventListener('touchcancel', endLook);
+
+        document.getElementById('btnDown').addEventListener('touchstart', e => { e.preventDefault(); this.jump(); });
+        const stickJump = document.getElementById('stickJumpBtn');
+        if(stickJump) {
+            let jumpTouchStart = 0; let jumpTouchPos = {x:0, y:0};
+            stickJump.addEventListener('touchstart', e => { jumpTouchStart = Date.now(); jumpTouchPos = {x:e.changedTouches[0].clientX, y:e.changedTouches[0].clientY}; }, {passive:true});
+            stickJump.addEventListener('touchend', e => { const dt = Date.now() - jumpTouchStart; const t = e.changedTouches[0]; const dist = Math.hypot(t.clientX - jumpTouchPos.x, t.clientY - jumpTouchPos.y); if (dt < 150 && dist < 5) { this.jump(); } });
+        }
+
+        let distTouchStart = {x:0,y:0}; let distBtnTimer=null; let distBtnLongPress=false;
+        const btnUp = document.getElementById('btnUp');
+        btnUp.addEventListener('touchstart', e => { e.preventDefault(); distTouchStart = {x:e.changedTouches[0].clientX, y:e.changedTouches[0].clientY}; distBtnLongPress = false; distBtnTimer = setTimeout(() => { this.isFocusing = !this.isFocusing; this.game.showMsg(this.isFocusing ? "集中モード ON" : "集中モード OFF", "#f00"); distBtnLongPress = true; }, 500); });
+        btnUp.addEventListener('touchend', e => { e.preventDefault(); if(distBtnTimer) clearTimeout(distBtnTimer); if(distBtnLongPress) return; const t = e.changedTouches[0]; const dx = t.clientX - distTouchStart.x, dy = t.clientY - distTouchStart.y; if(Math.max(Math.abs(dx), Math.abs(dy)) < 10) { if(this.currentDist < 10) this.currentDist = 15; else if(this.currentDist < 20) this.currentDist = 35; else this.currentDist = 6; } else { if(Math.abs(dx) > Math.abs(dy)) this.currentDist = 15; else { if(dy < 0) this.currentDist = 35; else this.currentDist = 6; } } document.getElementById('distLabel').textContent = this.currentDist===6?"近":(this.currentDist===15?"中":"遠"); this.game.showMsg(`射程: ${this.currentDist}m`, "#fff"); });
+
+        let actId=null; let actStartPos={x:0,y:0};
+        const btnLeft = document.getElementById('btnLeft');
+        btnLeft.addEventListener('touchstart', e=>{e.preventDefault(); if(actId)return; actId=e.changedTouches[0].identifier; actStartPos={x:e.changedTouches[0].clientX,y:e.changedTouches[0].clientY};});
+        btnLeft.addEventListener('touchend', e=>{ e.preventDefault(); for(let i=0;i<e.changedTouches.length;i++) { if(e.changedTouches[i].identifier === actId) { if(Math.hypot(e.changedTouches[i].clientX - actStartPos.x, e.changedTouches[i].clientY - actStartPos.y) > 20) this.game.mode.actionKai(); else this.game.mode.actionMetsu(); actId=null; } } });
+
+        const modeBtn = document.getElementById('modeSwitch');
+        let modeTouchStart = {x:0, y:0}; let modeIsSlide = false;
+        modeBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); const t = e.changedTouches[0]; modeTouchStart = {x:t.clientX, y:t.clientY}; modeIsSlide = false; });
+        modeBtn.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); const t = e.changedTouches[0]; const dx = t.clientX - modeTouchStart.x; if (Math.abs(dx) > 30 && !modeIsSlide && this.game.mode.isAwakened) { modeIsSlide = true; this.toggleZekkai(); } });
+        modeBtn.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); if (!modeIsSlide) { this.isPhysMode = !this.isPhysMode; modeBtn.textContent = this.isPhysMode ? "モード: 顕現" : "モード: 幽体"; modeBtn.className = this.isPhysMode ? "phys" : "ghost"; const btnRight = document.getElementById('btnRight'); btnRight.style.background = this.isPhysMode ? "linear-gradient(135deg,#FFD700,#FF8C00)" : "linear-gradient(135deg,#03a9f4,#0288d1)"; btnRight.innerHTML = this.isPhysMode ? "顕<br><span style='font-size:10px'>Hold</span>" : "結<br><span style='font-size:10px'>Hold</span>"; if(this.zekkaiActive) this.updateZekkaiUI(); } });
+
+        let drawId = null; let activePhysKekkai = null; let drawState = { active:false, startX:0, startY:0, ghost:null };
+        const btnRight = document.getElementById('btnRight');
+        btnRight.addEventListener('touchstart', e => { e.preventDefault(); if(this.drawCooldown > 0) { this.game.showMsg("共鳴妨害中...", "#f0f"); return; } if(drawId) return; const t = e.changedTouches[0]; drawId = t.identifier; btnRight.classList.add('drawing'); if(this.isPhysMode) { activePhysKekkai = this.createActiveMobile(); activePhysKekkai.startX = t.clientX; activePhysKekkai.startY = t.clientY; } else { drawState.active = true; drawState.startX = t.clientX; drawState.startY = t.clientY; const g = new THREE.BoxGeometry(1,1,1); const m = new THREE.MeshBasicMaterial({color: this.game.mode.config.colors.drawGhost, transparent:true, opacity:0.2}); drawState.ghost = new THREE.Mesh(g, m); drawState.ghost.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({color:0xffffff}))); drawState.ghost.position.copy(this.game.aimMarker.position).sub(new THREE.Vector3(0,0.5,0)); drawState.ghost.rotation.y = this.camAngle.yaw; this.game.scene.add(drawState.ghost); } });
+        btnRight.addEventListener('touchmove', e => { e.preventDefault(); if(!drawId) return; for(let i=0; i<e.changedTouches.length; i++) { if(e.changedTouches[i].identifier === drawId) { const t = e.changedTouches[i]; if(activePhysKekkai) { const dx = Math.abs(t.clientX - activePhysKekkai.startX) * 0.03; const dy = (activePhysKekkai.startY - t.clientY) * 0.03; this.updateActiveMobile(activePhysKekkai, dx, dy); } else if(drawState.ghost) { const dx = Math.abs(t.clientX - drawState.startX) * 0.03 * 1.5; const dy = (drawState.startY - t.clientY) * 0.03 * 1.5; const s = 1 + Math.max(0, dx); const sy = 1 + Math.max(0, dy); drawState.ghost.scale.set(s, sy, s); } } } });
+        btnRight.addEventListener('touchend', e => { e.preventDefault(); for(let i=0; i<e.changedTouches.length; i++) { if(e.changedTouches[i].identifier === drawId) { if(activePhysKekkai) { this.game.world.removeBody(activePhysKekkai.body); this.game.mode.createKekkai(activePhysKekkai.mesh.position, activePhysKekkai.mesh.scale, activePhysKekkai.mesh.rotation.y, false); this.game.safeRemoveMesh(activePhysKekkai.mesh); activePhysKekkai = null; } else if(drawState.ghost) { this.game.mode.createKekkai(drawState.ghost.position, drawState.ghost.scale, drawState.ghost.rotation.y, true); this.game.safeRemoveMesh(drawState.ghost); drawState.ghost = null; drawState.active = false; } drawId = null; btnRight.classList.remove('drawing'); } } });
+    }
+
+    createActiveMobile() {
+        const p = this.game.aimMarker.position.clone().sub(new THREE.Vector3(0,0.5,0)); const r = this.camAngle.yaw;
+        const b = new CANNON.Body({mass:0, collisionFilterGroup:2, collisionFilterMask:1|2|4}); b.position.copy(p); b.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0), r); this.game.world.addBody(b);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshPhongMaterial({color: this.game.mode.config.colors.drawPhys, transparent:true, opacity:0.5})); m.position.copy(p); m.rotation.y = r; this.game.scene.add(m);
+        return {body:b, mesh:m, startP:p, startR:r};
+    }
+
+    updateActiveMobile(k, dx, dy) {
+        const sx = 1 + Math.max(0, dx*10); const sy = 1 + Math.max(0, dy*10);
+        k.mesh.scale.set(sx, sy, sx); k.mesh.position.y = k.startP.y;
+        this.game.world.removeBody(k.body);
+        k.body = new CANNON.Body({mass:0, collisionFilterGroup:2, collisionFilterMask:1|2|4}); k.body.position.copy(k.mesh.position); k.body.quaternion.copy(k.mesh.quaternion); k.body.addShape(new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sx/2))); this.game.world.addBody(k.body);
+    }
+
+    jump() {
+        if(Math.abs(this.body.velocity.y) < 1) this.body.velocity.y = this.config.jump;
+        else if (this.game.mode.allowMultiJump && this.game.mode.canMultiJump(this)) {}
+    }
+
+    takeDamage(amount) {
+        if(this.damageCooldown > 0 || this.game.gameState.isGameOver) return;
+        this.hp = Math.max(0, this.hp - amount); this.game.stats.damageTaken += amount; this.damageCooldown = 1.0;
+        if (this.hp <= 0) { this.hp = 0; this.game.showMsg("WARNING!!", "#f00"); this.game.els.dmgOverlay.style.opacity = 0.8; } else { this.game.els.dmgOverlay.style.opacity = 0.5; setTimeout(() => this.game.els.dmgOverlay.style.opacity = 0, 150); }
+    }
+
+    heal(amount) { this.hp = Math.min(this.config.maxHp, this.hp + amount); this.game.showMsg("RECOVER", "#0f0"); }
+
+    toggleZekkai(forceState = null) {
+        const newState = forceState !== null ? forceState : !this.zekkaiActive;
+        if (newState) {
+            if (this.sp < 10) { this.game.showMsg("霊力不足", "#f00"); return; }
+            this.zekkaiActive = true; this.game.showMsg("絶界 展開", "#a0f");
+            const g = new THREE.SphereGeometry(2, 32, 32); const m = new THREE.MeshPhongMaterial({color: 0xaa00ff, transparent: true, opacity: 0.3, emissive: 0x440088});
+            this.zekkaiMesh = new THREE.Mesh(g, m); this.game.scene.add(this.zekkaiMesh);
+            this.zekkaiBody = new CANNON.Body({mass: 0, collisionFilterGroup: 2, collisionFilterMask: 4}); this.zekkaiBody.addShape(new CANNON.Sphere(2)); this.game.world.addBody(this.zekkaiBody);
+        } else {
+            this.zekkaiActive = false;
+            if (this.zekkaiMesh) { this.game.safeRemoveMesh(this.zekkaiMesh); this.zekkaiMesh = null; }
+            if (this.zekkaiBody) { this.game.world.removeBody(this.zekkaiBody); this.zekkaiBody = null; }
+        }
+        this.updateZekkaiUI();
+    }
+
+    updateZekkaiUI() {
+        const modeBtn = document.getElementById('modeSwitch');
+        if (this.zekkaiActive) { modeBtn.style.background = "linear-gradient(90deg, #aa00ff, #550088)"; modeBtn.style.borderColor = "#ff00ff"; modeBtn.style.color = "#fff"; modeBtn.textContent = "絶界 展開中"; }
+        else { modeBtn.className = this.isPhysMode ? "phys" : "ghost"; modeBtn.style.background = ""; modeBtn.style.borderColor = ""; modeBtn.style.color = ""; modeBtn.textContent = this.isPhysMode ? "モード: 顕現" : "モード: 幽体"; }
+    }
+
+    updateHUD() {
+        const els = this.game.els;
+        if(!els.scoreText) { const d = document.createElement('div'); d.style.cssText = "position:absolute; bottom:120px; right:16px; font-size:20px; font-weight:bold; color:#fff; text-shadow:1px 1px 1px #000; text-align:right;"; document.body.appendChild(d); els.scoreText = d; }
+        const score = Math.floor(this.game.stats.damageDealt * 10 - this.game.stats.damageTaken * 2);
+        els.scoreText.textContent = `SCORE: ${score}`;
+        els.hpText.textContent = Math.floor(this.hp); els.hpBar.style.width = (this.hp) + "%"; els.hpBar.style.backgroundColor = this.hp < 30 ? "#f00" : "#0f0";
+        els.spText.textContent = Math.floor(this.sp); els.spBar.style.width = (this.sp) + "%";
+        if (this.game.mode.isAwakened) { els.spBar.style.backgroundColor = this.sp < 20 ? "#f00" : "#a0f"; } else { els.spBar.style.backgroundColor = this.sp < 20 ? "#f00" : "#00bfff"; }
+        els.wVal.textContent = "WAVE " + this.game.gameState.wave; els.tVal.textContent = this.game.gameState.req > 0 ? this.game.gameState.req : "CLEAR!";
+        els.bossLabel.style.display = (this.game.gameState.missionType === 'boss_eater') ? 'block' : 'none';
+        if(this.drawCooldown > 0) { els.btnDraw.classList.add('disabled'); els.jammingOverlay.style.opacity = 0.8; } else { els.btnDraw.classList.remove('disabled'); els.jammingOverlay.style.opacity = 0; }
+    }
+
+    updateAimMarker() {
+        if(!this.game.playerGroup || !this.game.aimMarker) return;
+        this.game.camera.updateMatrixWorld(true);
+        const _vecPos = new THREE.Vector3(); const _vecDir = new THREE.Vector3();
+        this.game.camera.getWorldPosition(_vecPos); this.game.camera.getWorldDirection(_vecDir);
+
+        if (this.isFocusing) {
+            this.game.focusLaser.visible = true; this.game.aimMarker.material.color.setHex(0xff0000);
+            let targetPoint = null; let lockedEnemy = null;
+            if (this.game.mode.isAwakened) {
+                let maxDot = 0.9;
+                this.game.entities.enemies.forEach(e => { const dirToE = e.mesh.position.clone().sub(_vecPos).normalize(); const dot = _vecDir.dot(dirToE); if (dot > maxDot) { maxDot = dot; lockedEnemy = e; } });
+                if (lockedEnemy) { targetPoint = lockedEnemy.mesh.position.clone(); this.game.aimMarker.position.copy(targetPoint); }
+            }
+            if (!targetPoint) {
+                this.raycaster.set(_vecPos, _vecDir);
+                const targets = this.game.entities.enemies.map(e => e.mesh);
+                if (this.game.groundMesh) targets.push(this.game.groundMesh);
+                const hits = this.raycaster.intersectObjects(targets, true);
+                if (hits.length > 0) targetPoint = hits[0].point; else targetPoint = _vecPos.clone().add(_vecDir.clone().multiplyScalar(100));
+                this.game.aimMarker.position.copy(targetPoint);
+            }
+            const positions = this.game.focusLaser.geometry.attributes.position.array;
+            positions[0] = _vecPos.x; positions[1] = _vecPos.y - 0.2; positions[2] = _vecPos.z; positions[3] = this.game.aimMarker.position.x; positions[4] = this.game.aimMarker.position.y; positions[5] = this.game.aimMarker.position.z;
+            this.game.focusLaser.geometry.attributes.position.needsUpdate = true;
+
+            let bestCandidate = null;
+            if (lockedEnemy) {
+                 const enemyBox = new THREE.Box3().setFromObject(lockedEnemy.mesh);
+                 bestCandidate = this.game.entities.kekkai.find(k => { const kBox = new THREE.Box3().setFromObject(k.mesh); return kBox.intersectsBox(enemyBox); });
+                 if (!bestCandidate) { let minD = 999; this.game.entities.kekkai.forEach(k => { const dist = k.mesh.position.distanceTo(lockedEnemy.mesh.position); if (dist < 10 && dist < minD) { minD = dist; bestCandidate = k; } }); }
+            }
+            if(!bestCandidate) {
+                this.raycaster.set(_vecPos, _vecDir); const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
+                if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
+            }
+            if (this.game.currentTargetKekkai && this.game.currentTargetKekkai !== bestCandidate) { if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) { this.game.currentTargetKekkai.edges.material.color.setHex(0xffffff); this.game.currentTargetKekkai.edges.material.linewidth = 1; } }
+            this.game.currentTargetKekkai = bestCandidate;
+            if (this.game.currentTargetKekkai) { if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) { this.game.currentTargetKekkai.edges.material.color.setHex(0xff00ff); this.game.currentTargetKekkai.edges.material.linewidth = 5; } }
+        } else {
+            this.game.focusLaser.visible = false; this.game.aimMarker.material.color.setHex(this.config.colors ? this.config.colors.marker : 0xff0000);
+            this.game.aimMarker.position.copy(_vecPos).add(_vecDir.clone().multiplyScalar(this.currentDist)); this.game.aimMarker.rotation.y = Math.atan2(_vecDir.x, _vecDir.z);
+            let bestCandidate = null; this.raycaster.set(_vecPos, _vecDir);
+            const intersects = this.raycaster.intersectObjects(this.game.entities.kekkai.map(k => k.mesh));
+            if (intersects.length > 0) bestCandidate = this.game.entities.kekkai.find(k => k.mesh === intersects[0].object);
+            if(!bestCandidate) {
+                let minD = 999;
+                this.game.entities.kekkai.forEach(k => {
+                    const kPos = k.mesh.position; const vecToK = kPos.clone().sub(_vecPos); const t = vecToK.dot(_vecDir);
+                    if (t > 0 && t < this.game.mode.config.dist.max + 20) {
+                        const closestPoint = _vecPos.clone().add(_vecDir.clone().multiplyScalar(t)); const dist = kPos.distanceTo(closestPoint); const size = Math.max(k.mesh.scale.x, k.mesh.scale.y, k.mesh.scale.z);
+                        if (dist < this.game.mode.config.aimAssist.baseRadius + (size * 0.5)) { if(dist < minD){ minD = dist; bestCandidate = k; } }
+                    }
+                });
+            }
+            if (this.game.currentTargetKekkai && this.game.currentTargetKekkai !== bestCandidate) { if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) { this.game.currentTargetKekkai.edges.material.color.setHex(0xffffff); this.game.currentTargetKekkai.edges.material.linewidth = 1; } }
+            this.game.currentTargetKekkai = bestCandidate;
+            if (this.game.currentTargetKekkai) { if(this.game.currentTargetKekkai.edges && this.game.currentTargetKekkai.edges.material) { this.game.currentTargetKekkai.edges.material.color.setHex(this.game.mode.config.colors.highlight); this.game.currentTargetKekkai.edges.material.linewidth = 3; } }
+        }
+    }
+
+    setupVRControllers() {
+        const mf = new XRControllerModelFactory();
+        for(let i=0; i<2; i++){
+            const c = this.game.renderer.xr.getController(i); this.game.playerGroup.add(c); this.controllers.push(c);
+            const g = this.game.renderer.xr.getControllerGrip(i); g.add(mf.createControllerModel(g)); this.game.playerGroup.add(g); this.controllerGrips.push(g);
+        }
+    }
+}
+
+// --- Game Class ---
+class Game {
+    constructor(mode) {
+        this.mode = mode;
+        this.mode.game = this;
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.world = null;
+        this.player = null;
+        this.clock = new THREE.Clock();
+        this.entities = { enemies: [], kekkai: [], items: [], waterSplashes: [] };
+        this.gameState = { wave: 1, req: 0, nextSpawn: 0, missionType: 'normal', enemiesToSpawn: 0, puzzle: null, isGameOver: false };
+        this.stats = { startTime: 0, endTime: 0, distance: 0, damageTaken: 0, damageDealt: 0, kekkaiCount: 0 };
+        this.waterTank = { body: null, mesh: null, hp: 100, destroyed: false, waterPlane: null, floodTimer: 0, origPos: null };
+        this.gatePos = null;
+        this.windows = [];
+        this.aimMarker = null;
+        this.focusLaser = null;
+        this.targetArrow = null;
+        this.els = {
+            msg: document.getElementById('flashMsg'),
+            hpText: document.getElementById('hpText'),
+            hpBar: document.getElementById('hpBar'),
+            spText: document.getElementById('spText'),
+            spBar: document.getElementById('spBar'),
+            wVal: document.getElementById('waveVal'),
+            tVal: document.getElementById('targetVal'),
+            missionText: document.getElementById('missionText'),
+            bossLabel: document.getElementById('bossLabel'),
+            dmgOverlay: document.getElementById('damage-overlay'),
+            jammingOverlay: document.getElementById('jamming-overlay'),
+            tankTimer: document.getElementById('tankTimer'),
+            vipBox: document.getElementById('vipBox'),
+            vipHpBar: document.getElementById('vipHpBar'),
+            novr: document.querySelectorAll('.novr-only'),
+            btnDraw: document.getElementById('btnRight')
+        };
+    }
+
+    init() {
+        this.stats.startTime = Date.now();
+        this.setupScene();
+        this.setupPhysics();
+        this.setupPlayer();
+        this.mode.init();
+        this.renderer.setAnimationLoop((t) => this.loop(t));
+        window.addEventListener('resize', () => this.onResize());
+        document.getElementById('vrBtn').addEventListener('click', async()=>{ if(!navigator.xr)return; const s=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor','bounded-floor','hand-tracking']}); this.renderer.xr.setSession(s); this.els.novr.forEach(e=>e.style.opacity=0); s.addEventListener('end',()=>{this.els.novr.forEach(e=>e.style.opacity=1);}); });
+    }
+
+    setupScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(this.mode.config.colors.sky);
+        this.scene.fog = new THREE.FogExp2(this.mode.config.colors.sky, 0.005);
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.xr.enabled = true;
+        document.body.appendChild(this.renderer.domElement);
+        this.aimMarker = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.7, depthTest: false}));
+        this.scene.add(this.aimMarker);
+        const lGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        const lMat = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.7 });
+        this.focusLaser = new THREE.Line(lGeo, lMat);
+        this.focusLaser.visible = false;
+        this.focusLaser.frustumCulled = false;
+        this.scene.add(this.focusLaser);
+        this.setupVRHud();
+    }
+
+    setupVRHud() {
+        this.vrHudCanvas = document.createElement('canvas'); this.vrHudCanvas.width = 512; this.vrHudCanvas.height = 128;
+        this.vrHudCtx = this.vrHudCanvas.getContext('2d');
+        const tex = new THREE.CanvasTexture(this.vrHudCanvas);
+        this.vrHudMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.25), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false }));
+        this.vrHudMesh.position.set(0, 0.3, -1); this.camera.add(this.vrHudMesh);
+    }
+
+    updateVRHud() {
+        if(!this.renderer.xr.isPresenting || !this.vrHudCtx) return;
+        const ctx = this.vrHudCtx; const gs = this.gameState; const hp = this.player ? this.player.hp : 0; const sp = this.player ? this.player.sp : 0; const dist = this.player ? this.player.currentDist : 0;
+        ctx.clearRect(0,0,512,128); ctx.fillStyle="rgba(0,20,40,0.6)"; ctx.fillRect(0,0,512,128); ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(2,2,508,124);
+        ctx.font="bold 24px sans-serif"; ctx.fillStyle="#ffeb3b"; ctx.fillText(`WAVE ${gs.wave}`,20,30);
+        if(gs.missionType==='boss_eater') { ctx.fillStyle="#ff0055"; ctx.fillText(`BOSS 結界食い`, 140, 30); }
+        ctx.font="20px sans-serif"; ctx.fillStyle="#fff"; ctx.fillText(`残: ${gs.req}`,20,60); ctx.fillText(`距離: ${dist.toFixed(1)}m`,20,90);
+        ctx.fillStyle = hp < 30 ? "#f55" : "#0f0"; ctx.fillText(`HP: ${Math.floor(hp)}`,300,30);
+        ctx.fillStyle = "#555"; ctx.fillRect(300,35,180,15); ctx.fillStyle = hp < 30 ? "#f00" : "#0f0"; ctx.fillRect(300,35,180*(hp/100),15);
+        ctx.fillStyle = "#0ff"; ctx.fillText(`SP: ${Math.floor(sp)}`,300,75);
+        ctx.fillStyle = "#555"; ctx.fillRect(300,80,180,15); ctx.fillStyle = sp < 20 ? "#f00" : "#00bfff"; ctx.fillRect(300,80,180*(sp/100),15);
+        if(this.player && this.player.drawCooldown > 0) { ctx.fillStyle="#f0f"; ctx.fillText("！共鳴妨害！", 20, 115); }
+        const score = Math.floor(this.stats.damageDealt * 10 - this.stats.damageTaken * 2);
+        ctx.fillStyle = "#fff"; ctx.font="16px sans-serif"; ctx.fillText(`SCORE: ${score}`, 400, 115);
+        this.vrHudMesh.material.map.needsUpdate = true;
+    }
+
+    setupPhysics() {
+        this.world = new CANNON.World(); this.world.gravity.set(0, -30, 0);
+        this.materials = { def: new CANNON.Material('def'), ply: new CANNON.Material('ply'), ene: new CANNON.Material('ene'), kek: new CANNON.Material('kek') };
+        this.world.addContactMaterial(new CANNON.ContactMaterial(this.materials.ply, this.materials.def, { friction: 0.0, restitution: 0.0 }));
+        this.world.addContactMaterial(new CANNON.ContactMaterial(this.materials.ene, this.materials.def, { friction: 0.5, restitution: 0.3 }));
+        this.world.addContactMaterial(new CANNON.ContactMaterial(this.materials.kek, this.materials.ene, { friction: 0.1, restitution: 0.8 }));
+        this.world.addContactMaterial(new CANNON.ContactMaterial(this.materials.kek, this.materials.ply, { friction: 0.0, restitution: 0.0 }));
+        this.mode.setupEnvironment(this.scene, this.world, this.materials.def);
+    }
+
+    setupPlayer() {
+        this.playerGroup = new THREE.Group(); this.playerGroup.add(this.camera); this.scene.add(this.playerGroup);
+        this.player = new Player(this); this.player.setupMobileControls(); this.player.setupVRControllers();
+    }
+
+    loop(t) {
+        try {
+            const dt = Math.min(this.clock.getDelta(), 0.1);
+            this.world.step(1/60, dt, 3);
+            this.mode.update(dt, t);
+            if (this.player && this.player.body && isNaN(this.player.body.position.x)) { console.error("Player NaN position detected! Resetting."); this.player.body.position.set(0, 10, 0); this.player.body.velocity.set(0, 0, 0); }
+            this.player.update(dt);
+            this.updateVRHud();
+            this.entities.waterSplashes = this.entities.waterSplashes.filter(s => { s.timer -= dt; return s.timer > 0; });
+
+            if(this.targetArrow) {
+                const target = this.entities.enemies.find(e => e.isPuzzleTarget) || this.entities.enemies.find(e => e.isTarget || e.isBoss);
+                if(target) {
+                    this.targetArrow.visible = true;
+                    if(target.mesh) this.targetArrow.position.copy(target.mesh.position).add(new THREE.Vector3(0, 4, 0));
+                    this.targetArrow.rotation.y += dt * 3;
+                    if(!target.markerPillar && target.mesh) {
+                        const geo = new THREE.CylinderGeometry(2.0, 2.0, 500, 16);
+                        const mat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.3, depthTest: false});
+                        target.markerPillar = new THREE.Mesh(geo, mat); target.markerPillar.position.y = 250; target.mesh.add(target.markerPillar);
+                    }
+                } else { this.targetArrow.visible = false; }
+            }
+
+            const kekkaiList = [...this.entities.kekkai]; const enemyList = [...this.entities.enemies];
+            kekkaiList.forEach(k=>{
+                if(!k.shrinking || !k.mesh) return;
+                k.mesh.scale.multiplyScalar(0.7);
+                const kb=new THREE.Box3().setFromObject(k.mesh);
+                enemyList.forEach(e=>{
+                    if (!e.mesh) return;
+                    if (!this.entities.enemies.includes(e)) return;
+                    if(kb.intersectsBox(new THREE.Box3().setFromObject(e.mesh))) {
+                        if(k.isWaterCube && e.type === 'fire' && e.state !== 'wet') { e.state = 'wet'; e.wetTimer = 10.0; this.spawnText("接触鎮火!", e.mesh.position, "#0af"); e.body.velocity.set(0,0,0); }
+                        if (e.type === 'fire' && e.state !== 'wet') { this.spawnText("無効!", e.mesh.position, "#f00"); k.shrinking = false; this.mode.removeKekkai(k); }
+                        else this.mode.onMetsuHit(e);
+                    }
+                    if (this.waterTank.mesh && kb.intersectsBox(new THREE.Box3().setFromObject(this.waterTank.mesh))) { this.waterTank.hp -= 50; }
+                });
+                if(k.mesh.scale.x<0.05) this.mode.removeKekkai(k);
+            });
+
+            this.entities.items.forEach(it => {
+                it.mesh.position.copy(it.body.position); it.mesh.rotation.y += 0.05;
+                if(this.player.body.position.distanceTo(it.body.position) < 2) { this.player.heal(20); this.safeRemoveMesh(it.mesh); this.world.removeBody(it.body); this.entities.items = this.entities.items.filter(i => i !== it); }
+            });
+            this.renderer.render(this.scene, this.camera);
+        } catch (e) { console.error("Game Loop Error:", e); }
+    }
+
+    onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    showMsg(t, c) { this.els.msg.textContent = t; this.els.msg.style.color = c; this.els.msg.style.opacity = 1; setTimeout(() => this.els.msg.style.opacity = 0, 800); }
+
+    spawnText(s, p, c) {
+        const cvs=document.createElement('canvas'); cvs.width=256; cvs.height=64; const ctx=cvs.getContext('2d'); ctx.font="bold 48px sans-serif"; ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(s,128,32);
+        const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cvs), transparent:true})); sp.position.copy(p); sp.scale.set(4,1,4); this.scene.add(sp);
+        let f=0; const a=()=>{ if(!sp.parent)return; f+=0.05; sp.position.y+=0.05; sp.material.opacity=1-f; if(f<1)requestAnimationFrame(a); else this.safeRemoveMesh(sp); }; a();
+    }
+
+    spawnParticle(p, n, c, scale=1.0) {
+        const g=new THREE.BoxGeometry(0.2*scale,0.2*scale,0.2*scale); const m=new THREE.MeshBasicMaterial({color:c});
+        for(let i=0;i<n;i++){
+            const me=new THREE.Mesh(g,m); me.position.copy(p).add(new THREE.Vector3((Math.random()-.5)*2, (Math.random()-.5)*2, (Math.random()-.5)*2)); this.scene.add(me);
+            const v=new THREE.Vector3(Math.random()-.5, Math.random()-.5, Math.random()-.5).multiplyScalar(3.0);
+            const a=()=>{ if(!me.parent)return; me.position.add(v.clone().multiplyScalar(0.05)); me.scale.multiplyScalar(0.9); if(me.scale.x>0.05)requestAnimationFrame(a); else this.safeRemoveMesh(me); }; a();
+        }
+    }
+
+    showResult() {
+        this.gameState.isGameOver = true; this.stats.endTime = Date.now(); const duration = (this.stats.endTime - this.stats.startTime) / 1000;
+        const score = Math.floor((this.gameState.wave * 1000) + (this.stats.damageDealt * 10) - (this.stats.damageTaken * 20) + (this.stats.kekkaiCount * 5) - (duration * 2));
+        let rank = "C"; if (score > 10000) rank = "B"; if (score > 20000) rank = "A"; if (score > 30000) rank = "S"; if (score > 50000) rank = "SSS";
+        const html = `<span style="color:#aaa;">CLEAR TIME:</span> ${duration.toFixed(1)}s<br><span style="color:#aaa;">MAX WAVE:</span> ${this.gameState.wave}<br><span style="color:#0f0;">DAMAGE DEALT:</span> ${Math.floor(this.stats.damageDealt)}<br><span style="color:#f00;">DAMAGE TAKEN:</span> ${Math.floor(this.stats.damageTaken)}<br><span style="color:#ff0;">KEKKAI CREATED:</span> ${this.stats.kekkaiCount}<br><span style="color:#0ff;">DISTANCE:</span> ${Math.floor(this.stats.distance)}m<br><hr style="border-color:#555;"><span style="font-size:30px; font-weight:bold;">SCORE: ${score}</span><br><span style="font-size:50px; font-weight:900; color:${rank==='SSS'?'#fe0':'#fff'};">RANK ${rank}</span>`;
+        document.getElementById('result-screen').style.display = 'flex'; document.getElementById('result-stats').innerHTML = html; document.getElementById('hud').style.display = 'none'; document.getElementById('uiLayer').style.display = 'none';
+    }
+
+    safeRemoveMesh(mesh) { if(!mesh||!mesh.parent)return; this.scene.remove(mesh); if(mesh.geometry)mesh.geometry.dispose(); if(mesh.material){ if(Array.isArray(mesh.material))mesh.material.forEach(m=>m.dispose()); else mesh.material.dispose(); } }
+}
+
+// --- Main Init ---
+window.onload = function() {
+    const game = new Game(new AwakenedMode());
+    game.init();
+};
+</script>
+</body>
+</html>
